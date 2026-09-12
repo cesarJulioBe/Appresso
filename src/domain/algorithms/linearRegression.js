@@ -1,5 +1,5 @@
 function linearRegression(salesHistory) {
-  const n = salesHistory.length;
+const n = salesHistory.length;
 
   // Los "días" son 1, 2, 3... n (posición en el historial)
   const x = salesHistory.map((_, index) => index + 1);

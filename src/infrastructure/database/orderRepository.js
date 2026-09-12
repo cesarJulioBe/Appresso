@@ -25,10 +25,20 @@ class OrderRepository {
     return this.toOrder(result.rows[0]);
   }
 
-  async findAll() {
+   async findAll() {
     const result = await pool.query('SELECT * FROM orders ORDER BY id ASC');
     return result.rows.map(row => this.toOrder(row));
   }
+
+  async updateStatus(id, status) {
+    const result = await pool.query(
+      'UPDATE orders SET status = $1 WHERE id = $2 RETURNING *',
+      [status, id]
+    );
+    if (result.rows.length === 0) return null;
+    return this.toOrder(result.rows[0]);
+  }
+
 }
 
 module.exports = new OrderRepository();

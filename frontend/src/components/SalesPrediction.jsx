@@ -30,11 +30,11 @@ function SalesPrediction() {
       <h2 className="text-lg font-semibold mb-1">Predicción de ventas</h2>
       <p className="text-sm text-neutral-500 mb-4">Regresión lineal — ingresa las ventas de los últimos 7 días</p>
 
-      <div className="grid grid-cols-7 gap-2 mb-4">
+      <div className="grid grid-cols-7 gap-1 mb-4">
         {history.map((value, i) => (
           <TextField key={i} value={String(value)} onChange={(v) => updateDay(i, v)}>
             <Label>Día {i + 1}</Label>
-            <Input type="number" className="w-full min-w-0" />
+            <Input type="number" className="w-full min-w-0 px-1 text-center text-sm" />
           </TextField>
         ))}
       </div>
