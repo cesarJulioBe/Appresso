@@ -7,23 +7,36 @@ import { fetchOrders, fetchStatistics } from './api';
 import OrderSearch from './components/OrderSearch';
 import DeliveryQueue from './components/DeliveryQueue';
 import RoutePlanner from './components/RoutePlanner';
+import FraudDetection from './components/FraudDetection';
 
 function App() {
   const [orders, setOrders] = useState([]);
   const [statistics, setStatistics] = useState(null);
+  const [ordersPagination, setOrdersPagination] = useState({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 1,
+  });
 
   const refresh = useCallback(async () => {
     try {
       const [ordersData, statsData] = await Promise.all([
-        fetchOrders(),
+        fetchOrders(ordersPagination.page, ordersPagination.pageSize),
         fetchStatistics(),
       ]);
-      setOrders(ordersData);
+      setOrders(ordersData.orders);
+      setOrdersPagination({
+        page: ordersData.page,
+        pageSize: ordersData.pageSize,
+        total: ordersData.total,
+        totalPages: ordersData.totalPages,
+      });
       setStatistics(statsData.statistics);
     } catch (err) {
       console.error('Error al refrescar:', err);
     }
-  }, []);
+  }, [ordersPagination.page, ordersPagination.pageSize]);
 
   useEffect(() => {
     refresh();
@@ -50,8 +63,14 @@ function App() {
 
         <div className="grid grid-cols-[340px_1fr] gap-8">
           <OrderForm onOrderCreated={refresh} />
-          <Dashboard orders={orders} statistics={statistics} />
+          <Dashboard
+            orders={orders}
+            statistics={statistics}
+            pagination={ordersPagination}
+            onPageChange={(page) => setOrdersPagination((current) => ({ ...current, page }))}
+          />
         </div>
+        <div className="min-w-0"><FraudDetection /></div>
       </main>
     </div>
 

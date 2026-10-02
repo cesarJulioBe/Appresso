@@ -18,8 +18,12 @@ const statusColors = {
   Delivered: 'success',
 };
 
-function Dashboard({ orders, statistics }) {
+function Dashboard({ orders, statistics, pagination, onPageChange }) {
   const statusLabels = ['Requested', 'In Progress', 'Delivered'];
+  const firstOrder = pagination.total === 0
+    ? 0
+    : (pagination.page - 1) * pagination.pageSize + 1;
+  const lastOrder = Math.min(pagination.page * pagination.pageSize, pagination.total);
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,7 +41,39 @@ function Dashboard({ orders, statistics }) {
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold mb-3">Pedidos ({orders.length})</h2>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-lg font-semibold">Pedidos ({pagination.total})</h2>
+            {pagination.total > 0 && (
+              <p className="text-xs text-neutral-500">
+                Mostrando {firstOrder}-{lastOrder}
+              </p>
+            )}
+          </div>
+          {pagination.totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onPageChange(pagination.page - 1)}
+                disabled={pagination.page === 1}
+                className="border border-neutral-300 rounded-md px-3 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-100"
+              >
+                Anteriores
+              </button>
+              <span className="text-sm text-neutral-600 whitespace-nowrap">
+                Página {pagination.page} de {pagination.totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => onPageChange(pagination.page + 1)}
+                disabled={pagination.page === pagination.totalPages}
+                className="border border-neutral-300 rounded-md px-3 py-1 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neutral-100"
+              >
+                Siguientes
+              </button>
+            </div>
+          )}
+        </div>
         <div className="flex flex-col gap-2">
           {orders.length === 0 && (
             <p className="text-neutral-500 text-sm">Aún no hay pedidos</p>
@@ -68,4 +104,3 @@ function Dashboard({ orders, statistics }) {
 }
 
 export default Dashboard;
-

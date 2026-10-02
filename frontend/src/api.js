@@ -10,8 +10,9 @@ export async function createOrder(customer, products) {
   return response.json();
 }
 
-export async function fetchOrders() {
-  const response = await fetch(`${API_BASE}/orders`);
+export async function fetchOrders(page = 1, pageSize = 20) {
+  const params = new URLSearchParams({ page, pageSize });
+  const response = await fetch(`${API_BASE}/orders?${params}`);
   if (!response.ok) throw new Error('Error al obtener pedidos');
   return response.json();
 }
@@ -94,5 +95,55 @@ export async function createRoute(origin, destination, distanceKm) {
 export async function deleteRoute(id) {
   const response = await fetch(`${API_BASE}/delivery/routes/${id}`, { method: 'DELETE' });
   if (!response.ok) throw new Error('Error al eliminar la ruta');
+  return response.json();
+}
+
+export async function fetchFraudStats() {
+  const response = await fetch(`${API_BASE}/fraud/stats`);
+  if (!response.ok) throw new Error('Error al obtener estadísticas de fraude');
+  return response.json();
+}
+
+export async function fetchFraudDashboard() {
+  const response = await fetch(`${API_BASE}/fraud/dashboard`);
+  if (!response.ok) throw new Error('Error al obtener el dashboard de fraude');
+  return response.json();
+}
+
+export async function fetchAnomalies() {
+  const response = await fetch(`${API_BASE}/fraud/anomalies`);
+  if (!response.ok) throw new Error('Error al listar anomalías');
+  return response.json();
+}
+
+export async function sendTestTransaction(user, value, paymentMethod) {
+  const response = await fetch(`${API_BASE}/fraud/simulate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user, value, paymentMethod }),
+  });
+  if (!response.ok) throw new Error('Error al simular transacción');
+  return response.json();
+}
+
+export async function fetchTransactions() {
+  const response = await fetch(`${API_BASE}/fraud/transactions`);
+  if (!response.ok) throw new Error('Error al listar transacciones');
+  return response.json();
+}
+
+export async function fetchThresholds() {
+  const response = await fetch(`${API_BASE}/fraud/thresholds`);
+  if (!response.ok) throw new Error('Error al obtener umbrales');
+  return response.json();
+}
+
+export async function updateThreshold(franja, umbralTransacciones, ventanaSegundos) {
+  const response = await fetch(`${API_BASE}/fraud/thresholds/${encodeURIComponent(franja)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ umbralTransacciones, ventanaSegundos }),
+  });
+  if (!response.ok) throw new Error('Error al actualizar el umbral');
   return response.json();
 }

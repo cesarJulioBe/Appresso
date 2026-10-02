@@ -25,10 +25,30 @@ class OrderRepository {
     return this.toOrder(result.rows[0]);
   }
 
-   async findAll() {
+  async findAll(page = 1, pageSize = 20) {
+    const offset = (page - 1) * pageSize;
+
+    const result = await pool.query(
+      'SELECT * FROM orders ORDER BY id ASC LIMIT $1 OFFSET $2',
+      [pageSize, offset]
+    );
+
+    const countResult = await pool.query('SELECT COUNT(*) FROM orders');
+    const total = parseInt(countResult.rows[0].count);
+
+    return {
+      orders: result.rows.map(row => this.toOrder(row)),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  /* async findAll() {
     const result = await pool.query('SELECT * FROM orders ORDER BY id ASC');
     return result.rows.map(row => this.toOrder(row));
-  }
+  }*/
 
   async updateStatus(id, status) {
     const result = await pool.query(
