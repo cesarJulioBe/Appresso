@@ -1,10 +1,10 @@
 const validateTransactionHash = require('./validateTransactionHash');
 const getThresholdByTime = require('./getThresholdByTime');
 
-function detectAnomaly(transaction, slidingWindow, thresholds, secret) {
+function detectAnomaly(transaction, slidingWindow, thresholds, secret, detectionDate = new Date()) {
   const isHashValid = validateTransactionHash(transaction, secret);
 
-  const transactionDate = new Date(transaction.date);
+  const transactionDate = new Date(detectionDate);
   const thresholdInfo = getThresholdByTime(transactionDate, thresholds);
 
   if (!thresholdInfo) {

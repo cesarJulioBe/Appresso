@@ -359,9 +359,16 @@ app.post('/sales/predict', (req, res) => {
   }
 });
 
-app.post('/transactions', async (req, res) => {
+async function receiveTransaction(req, res) {
   try {
-    const { idTxn, user, date, value, paymentMethod, hash } = req.body;
+    const {
+      idTxn,
+      user = req.body.email,
+      date = req.body.fechaTxn || req.body.fecha_txn,
+      value = req.body.valor,
+      paymentMethod = req.body.metodoPago || req.body.metodo_pago,
+      hash,
+    } = req.body;
 
     if (!user || !date || !value || !hash) {
       return res.status(400).json({ error: 'user, date, value y hash son obligatorios' });
@@ -369,9 +376,10 @@ app.post('/transactions', async (req, res) => {
 
     const thresholds = await thresholdRepository.findAll();
     const secret = process.env.HMAC_SECRET;
+    const receivedAt = new Date();
 
     const transaction = { idTxn, user, date, value, paymentMethod, hash };
-    const analysis = detectAnomaly(transaction, fraudSlidingWindow, thresholds, secret);
+    const analysis = detectAnomaly(transaction, fraudSlidingWindow, thresholds, secret, receivedAt);
 
     // Buscamos o creamos el usuario
     const usuario = await userRepository.findOrCreate(user);
@@ -380,7 +388,7 @@ app.post('/transactions', async (req, res) => {
     const savedTransaction = await transactionRepository.create({
       usuarioId: usuario.id,
       valor: value,
-      fechaTxn: date,
+      fechaTxn: receivedAt,
       hash,
       metodoPago: paymentMethod,
       estado: analysis.isHashValid ? 'Procesada' : 'Hash inválido',
@@ -406,7 +414,11 @@ app.post('/transactions', async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Error al procesar la transacción' });
   }
-});
+}
+
+app.post('/transactions', receiveTransaction);
+app.post('/api/transactions', receiveTransaction);
+app.post('/fraud/transactions', receiveTransaction);
 
 app.get('/fraud/stats', async (req, res) => {
   try {

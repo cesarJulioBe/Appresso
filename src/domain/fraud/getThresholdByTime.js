@@ -13,7 +13,15 @@ function isWithinRange(currentMinutes, startMinutes, endMinutes) {
 }
 
 function getThresholdByTime(date, thresholds) {
-  const currentMinutes = date.getHours() * 60 + date.getMinutes();
+  const timeZone = process.env.APP_TIMEZONE || 'America/Bogota';
+  const timeParts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const currentMinutes = Number(timeParts.find(part => part.type === 'hour').value) * 60
+    + Number(timeParts.find(part => part.type === 'minute').value);
 
   for (const row of thresholds) {
     const startMinutes = timeToMinutes(row.hora_inicio);
