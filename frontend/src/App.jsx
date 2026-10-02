@@ -11,6 +11,7 @@ import FraudDetection from './components/FraudDetection';
 
 function App() {
   const [activeView, setActiveView] = useState('orders');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [orders, setOrders] = useState([]);
   const [statistics, setStatistics] = useState(null);
   const [ordersPagination, setOrdersPagination] = useState({
@@ -66,34 +67,77 @@ function App() {
   return (
     <div className="min-h-screen bg-neutral-50">
       <header className="border-b border-neutral-200 bg-white px-5 py-5 md:px-8">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl mx-auto flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setIsMenuOpen(true)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-neutral-300 text-neutral-700 hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-400"
+            aria-label="Abrir menú"
+            aria-expanded={isMenuOpen}
+          >
+            <span className="flex flex-col gap-1.5" aria-hidden="true">
+              <span className="block h-0.5 w-5 bg-current" />
+              <span className="block h-0.5 w-5 bg-current" />
+              <span className="block h-0.5 w-5 bg-current" />
+            </span>
+          </button>
           <h1 className="text-2xl font-bold">Appresso</h1>
           <p className="text-neutral-500 text-sm">Tu café, a un tap</p>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-5 md:px-8">
-        <nav className="flex gap-2 overflow-x-auto border-b border-neutral-200 py-3" aria-label="Navegación principal">
-          {views.map((view) => (
-            <button
-              key={view.id}
-              type="button"
-              onClick={() => setActiveView(view.id)}
-              className={`min-w-fit rounded-md px-4 py-2 text-left transition ${
-                activeView === view.id
-                  ? 'bg-neutral-900 text-white'
-                  : 'text-neutral-600 hover:bg-neutral-100'
-              }`}
-              aria-current={activeView === view.id ? 'page' : undefined}
-            >
-              <span className="block text-sm font-medium">{view.label}</span>
-              <span className={`hidden text-xs md:block ${activeView === view.id ? 'text-neutral-300' : 'text-neutral-400'}`}>
-                {view.description}
-              </span>
-            </button>
-          ))}
-        </nav>
-      </div>
+      {isMenuOpen && (
+        <div className="fixed inset-0 z-40" role="presentation">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/30"
+            onClick={() => setIsMenuOpen(false)}
+            aria-label="Cerrar menú"
+          />
+          <nav
+            className="relative h-full w-80 max-w-[85vw] bg-white p-5 shadow-xl"
+            aria-label="Navegación principal"
+          >
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <p className="text-lg font-semibold">Menú</p>
+                <p className="text-sm text-neutral-500">Secciones de Appresso</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMenuOpen(false)}
+                className="rounded-md px-3 py-2 text-xl text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
+                aria-label="Cerrar menú"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              {views.map((view) => (
+                <button
+                  key={view.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveView(view.id);
+                    setIsMenuOpen(false);
+                  }}
+                  className={`rounded-md px-4 py-3 text-left transition ${
+                    activeView === view.id
+                      ? 'bg-neutral-900 text-white'
+                      : 'text-neutral-700 hover:bg-neutral-100'
+                  }`}
+                  aria-current={activeView === view.id ? 'page' : undefined}
+                >
+                  <span className="block text-sm font-medium">{view.label}</span>
+                  <span className={`block text-xs ${activeView === view.id ? 'text-neutral-300' : 'text-neutral-400'}`}>
+                    {view.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </nav>
+        </div>
+      )}
 
       <main className="max-w-6xl mx-auto p-5 md:p-8">
         {activeView === 'orders' && (
