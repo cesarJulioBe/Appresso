@@ -52,6 +52,11 @@ function App() {
       description: 'Algoritmos y logística',
     },
     {
+      id: 'routes',
+      label: 'Rutas',
+      description: 'Planificación de entregas',
+    },
+    {
       id: 'fraud',
       label: 'Detección de fraude',
       description: 'Monitoreo de transacciones',
@@ -169,8 +174,17 @@ function App() {
               <LoyaltyProgress />
               <SalesPrediction />
               <DeliveryQueue onOrderChanged={refresh} />
-              <RoutePlanner />
             </div>
+          </section>
+        )}
+
+        {activeView === 'routes' && (
+          <section className="flex flex-col gap-6" aria-labelledby="routes-title">
+            <div>
+              <h2 id="routes-title" className="text-xl font-semibold">Planificador de rutas</h2>
+              <p className="text-sm text-neutral-500">Administra rutas y calcula el trayecto más corto para tus entregas.</p>
+            </div>
+            <RoutePlanner />
           </section>
         )}
 
