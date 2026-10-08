@@ -17,11 +17,30 @@ const anomalyRepository = require('../database/AnomalyRepository');
 const thresholdRepository = require('../database/ThresholdRepository');
 const SlidingWindow = require('../../domain/fraud/SlidingWindow');
 const detectAnomaly = require('../../domain/fraud/detectAnomaly');
+const validateTransaction = require('../../domain/fraud/validateTransaction');
 const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+  const requestId = crypto.randomUUID();
+  const startedAt = Date.now();
+  res.locals.requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  res.on('finish', () => {
+    console.log(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      requestId,
+      method: req.method,
+      route: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt,
+      result: res.locals.transactionResult || 'completed',
+    }));
+  });
+  next();
+});
 // Pila compartida: guarda el historial de cambios de estado para poder deshacer
 const actionStack = new ActionStack();
 // Ventana deslizante compartida para detección de fraude (una instancia viva mientras el servidor corre)
@@ -363,29 +382,73 @@ async function receiveTransaction(req, res) {
   try {
     const {
       idTxn,
-      user = req.body.email,
-      date = req.body.fechaTxn || req.body.fecha_txn,
-      value = req.body.valor,
-      paymentMethod = req.body.metodoPago || req.body.metodo_pago,
+      user = req.body.user ?? req.body.email,
+      date = req.body.date ?? req.body.fechaTxn ?? req.body.fecha_txn,
+      value = req.body.value ?? req.body.valor,
+      paymentMethod = req.body.paymentMethod ?? req.body.metodoPago ?? req.body.metodo_pago,
       hash,
     } = req.body;
 
-    if (!user || !date || !value || !hash) {
-      return res.status(400).json({ error: 'user, date, value y hash son obligatorios' });
+    const transaction = { idTxn, user, date, value, paymentMethod, hash };
+    const validation = validateTransaction(transaction);
+    if (!validation.isValid) {
+      res.locals.transactionResult = 'validation_failed';
+      console.warn(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        requestId: res.locals.requestId,
+        result: 'validation_failed',
+        idTxn: Number.isSafeInteger(idTxn) ? idTxn : undefined,
+        errors: validation.errors,
+      }));
+      return res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'La transacción contiene datos inválidos',
+        requestId: res.locals.requestId,
+        details: validation.errors,
+      });
+    }
+
+    const existingTransaction = await transactionRepository.findByExternalId(idTxn);
+    if (existingTransaction) {
+      res.locals.transactionResult = 'duplicate_transaction';
+      console.warn(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        requestId: res.locals.requestId,
+        result: 'duplicate_transaction',
+        idTxn,
+      }));
+      return res.status(409).json({
+        error: 'DUPLICATE_TRANSACTION',
+        message: 'Ya existe una transacción con ese idTxn',
+        requestId: res.locals.requestId,
+      });
     }
 
     const thresholds = await thresholdRepository.findAll();
     const secret = process.env.HMAC_SECRET;
     const receivedAt = new Date();
-
-    const transaction = { idTxn, user, date, value, paymentMethod, hash };
     const analysis = detectAnomaly(transaction, fraudSlidingWindow, thresholds, secret, receivedAt);
+    if (!analysis.isHashValid) {
+      res.locals.transactionResult = 'invalid_hash';
+      console.warn(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        requestId: res.locals.requestId,
+        result: 'invalid_hash',
+        idTxn,
+      }));
+      return res.status(400).json({
+        error: 'INVALID_HASH',
+        message: 'El hash no coincide con los datos recibidos',
+        requestId: res.locals.requestId,
+      });
+    }
 
     // Buscamos o creamos el usuario
     const usuario = await userRepository.findOrCreate(user);
 
     // Guardamos la transacción
     const savedTransaction = await transactionRepository.create({
+      idTxn,
       usuarioId: usuario.id,
       valor: value,
       fechaTxn: receivedAt,
@@ -410,9 +473,26 @@ async function receiveTransaction(req, res) {
       analysis,
       anomaly: savedAnomaly,
     });
+    res.locals.transactionResult = 'created';
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error al procesar la transacción' });
+    if (err.code === '23505') {
+      res.locals.transactionResult = 'duplicate_transaction';
+      return res.status(409).json({
+        error: 'DUPLICATE_TRANSACTION',
+        message: 'Ya existe una transacción con ese idTxn',
+        requestId: res.locals.requestId,
+      });
+    }
+    console.error(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      requestId: res.locals.requestId,
+      result: 'database_or_processing_error',
+      error: err.message,
+    }));
+    res.status(500).json({
+      error: 'Error al procesar la transacción',
+      requestId: res.locals.requestId,
+    });
   }
 }
 
@@ -559,6 +639,7 @@ app.post('/fraud/simulate', async (req, res) => {
 
     const usuario = await userRepository.findOrCreate(user);
     const savedTransaction = await transactionRepository.create({
+      idTxn,
       usuarioId: usuario.id,
       valor: value,
       fechaTxn: date,

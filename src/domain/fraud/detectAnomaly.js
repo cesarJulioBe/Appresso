@@ -3,6 +3,13 @@ const getThresholdByTime = require('./getThresholdByTime');
 
 function detectAnomaly(transaction, slidingWindow, thresholds, secret, detectionDate = new Date()) {
   const isHashValid = validateTransactionHash(transaction, secret);
+  if (!isHashValid) {
+    return {
+      isHashValid: false,
+      isAnomaly: false,
+      reason: 'El hash no coincide con los datos recibidos',
+    };
+  }
 
   const transactionDate = new Date(detectionDate);
   const thresholdInfo = getThresholdByTime(transactionDate, thresholds);
