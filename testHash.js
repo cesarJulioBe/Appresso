@@ -12,8 +12,8 @@ const transaction = {
 };
 
 // Generamos el hash correcto (simulando lo que haría el cliente real)
-const payload = JSON.stringify(transaction, Object.keys(transaction).sort());
-const correctHash = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+const payload = JSON.stringify(transaction);
+const correctHash = crypto.createHmac('sha256', secret).update(payload, 'utf8').digest('hex');
 
 console.log('Hash generado:', correctHash);
 

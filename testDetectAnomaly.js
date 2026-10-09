@@ -14,8 +14,8 @@ const thresholds = [
 // Umbral bajo a propósito (noche-madrugada = 3) para ver la anomalía rápido
 function makeTransaction(idTxn, user, date, value) {
   const base = { idTxn, user, date, value, paymentMethod: 'Tarjeta' };
-  const payload = JSON.stringify(base, Object.keys(base).sort());
-  const hash = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  const payload = JSON.stringify(base);
+  const hash = crypto.createHmac('sha256', secret).update(payload, 'utf8').digest('hex');
   return { ...base, hash };
 }
 

@@ -468,7 +468,7 @@ async function receiveTransaction(req, res) {
       });
     }
 
-    res.status(201).json({
+    res.status(200).json({
       transaction: savedTransaction,
       analysis,
       anomaly: savedAnomaly,
