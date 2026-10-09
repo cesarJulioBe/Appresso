@@ -1,4 +1,15 @@
-require('dotenv').config();
+const path = require('path');
+const dotenv = require('dotenv');
+
+// Cargar .env buscando en Appresso/ y en la raíz Cafe/
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+if (!process.env.DB_HOST) {
+  dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+}
+if (!process.env.DB_HOST) {
+  dotenv.config();
+}
+
 const { Pool } = require('pg');
 
 const pool = new Pool({

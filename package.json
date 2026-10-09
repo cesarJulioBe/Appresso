@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node testValidateTransaction.js"
+    "test": "node testValidateTransaction.js",
+    "test:hash": "node testHash.js",
+    "test:batch": "node testTransactionsBatch.js"
   },
   "keywords": [],
   "author": "",

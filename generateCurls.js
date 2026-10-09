@@ -1,5 +1,13 @@
-const crypto = require('crypto');
-require('dotenv').config();
+const path = require('path');
+const dotenv = require('dotenv');
+
+// Cargar .env desde el directorio actual o desde el directorio raíz
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+if (!process.env.HMAC_SECRET) {
+  dotenv.config({ path: path.resolve(__dirname, '../.env') });
+}
+
+const { generateTransactionHash } = require('./src/domain/fraud/hashUtils');
 
 const secret = process.env.HMAC_SECRET;
 if (!secret) {
@@ -8,8 +16,7 @@ if (!secret) {
 
 function makeTransaction(idTxn, user, date, value, paymentMethod) {
   const base = { idTxn, user, date, value, paymentMethod };
-  const payload = JSON.stringify(base);
-  const hash = crypto.createHmac('sha256', secret).update(payload, 'utf8').digest('hex');
+  const hash = generateTransactionHash(base, secret);
   return { ...base, hash };
 }
 
@@ -19,6 +26,7 @@ const transactions = [
   makeTransaction(403, 'carlos@test.com', '2026-09-23T22:21:20', 15000, 'Tarjeta'),
 ];
 
+console.log('# Comandos cURL generados con HMAC-SHA256 Canónico (Tecnicas_de_resolucion.md):\n');
 transactions.forEach(txn => {
   console.log(`curl -X POST http://localhost:3000/transactions -H "Content-Type: application/json" -d '${JSON.stringify(txn)}'`);
   console.log('');

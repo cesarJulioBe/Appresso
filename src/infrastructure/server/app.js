@@ -1,3 +1,14 @@
+const path = require('path');
+const dotenv = require('dotenv');
+
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+if (!process.env.HMAC_SECRET) {
+  dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+}
+if (!process.env.HMAC_SECRET) {
+  dotenv.config();
+}
+
 const express = require('express');
 const cors = require('cors');
 const orderRepository = require('../database/OrderRepository');
@@ -18,6 +29,7 @@ const thresholdRepository = require('../database/ThresholdRepository');
 const SlidingWindow = require('../../domain/fraud/SlidingWindow');
 const detectAnomaly = require('../../domain/fraud/detectAnomaly');
 const validateTransaction = require('../../domain/fraud/validateTransaction');
+const { generateTransactionHash } = require('../../domain/fraud/hashUtils');
 const crypto = require('crypto');
 
 const app = express();
@@ -424,8 +436,23 @@ async function receiveTransaction(req, res) {
       });
     }
 
-    const thresholds = await thresholdRepository.findAll();
     const secret = process.env.HMAC_SECRET;
+    if (!secret) {
+      res.locals.transactionResult = 'configuration_error';
+      console.error(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        requestId: res.locals.requestId,
+        result: 'configuration_error',
+        error: 'HMAC_SECRET no está configurada en las variables de entorno',
+      }));
+      return res.status(500).json({
+        error: 'CONFIGURATION_ERROR',
+        message: 'Error de configuración interna en la verificación de seguridad',
+        requestId: res.locals.requestId,
+      });
+    }
+
+    const thresholds = await thresholdRepository.findAll();
     const receivedAt = new Date();
     const analysis = detectAnomaly(transaction, fraudSlidingWindow, thresholds, secret, receivedAt);
     if (!analysis.isHashValid) {
@@ -436,17 +463,41 @@ async function receiveTransaction(req, res) {
         result: 'invalid_hash',
         idTxn,
       }));
+
+      // Guardamos la transacción en la BD para auditoría forense con estado 'Hash inválido'
+      const usuario = await userRepository.findOrCreate(user);
+      const savedTransaction = await transactionRepository.create({
+        idTxn,
+        usuarioId: usuario.id,
+        valor: value,
+        fechaTxn: receivedAt,
+        hash,
+        metodoPago: paymentMethod,
+        estado: 'Hash inválido',
+      });
+
+      // Registramos la anomalía de integridad en la tabla de anomalías
+      const savedAnomaly = await anomalyRepository.create({
+        transaccionId: savedTransaction.id,
+        tipo: 'HASH_INVALIDO',
+        nivel: 'Crítico',
+        cantidadTransacciones: 1,
+        ventanaSegundos: 0,
+      });
+
       return res.status(400).json({
         error: 'INVALID_HASH',
-        message: 'El hash no coincide con los datos recibidos',
+        message: 'El hash no coincide con los datos recibidos (transacción registrada para auditoría)',
         requestId: res.locals.requestId,
+        transaction: savedTransaction,
+        anomaly: savedAnomaly,
       });
     }
 
     // Buscamos o creamos el usuario
     const usuario = await userRepository.findOrCreate(user);
 
-    // Guardamos la transacción
+    // Guardamos la transacción procesada exitosamente
     const savedTransaction = await transactionRepository.create({
       idTxn,
       usuarioId: usuario.id,
@@ -454,7 +505,7 @@ async function receiveTransaction(req, res) {
       fechaTxn: receivedAt,
       hash,
       metodoPago: paymentMethod,
-      estado: analysis.isHashValid ? 'Procesada' : 'Hash inválido',
+      estado: 'Procesada',
     });
 
     let savedAnomaly = null;
@@ -630,8 +681,7 @@ app.post('/fraud/simulate', async (req, res) => {
     const secret = process.env.HMAC_SECRET;
 
     const base = { idTxn, user, date, value, paymentMethod: paymentMethod || 'Tarjeta' };
-    const payload = JSON.stringify(base, Object.keys(base).sort());
-    const hash = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+    const hash = generateTransactionHash(base, secret);
 
     const thresholds = await thresholdRepository.findAll();
     const transaction = { ...base, hash };
