@@ -209,15 +209,20 @@ async function runBatchTests() {
   console.log('🧪 SUITE DE PRUEBAS DE TRANSACCIONES POR LOTES (200+ PETICIONES) - APPRESSO');
   console.log('='.repeat(80));
 
-  const targetHost = process.env.API_URL || 'http://localhost:3000';
+  const targetHost = process.env.API_URL;
   let server = null;
-  let baseUrl = targetHost;
+  let baseUrl;
 
-  const isExternalActive = await isServerRunning(targetHost);
-  if (isExternalActive) {
-    console.log(`📡 Conectado al servidor existente en: ${targetHost}\n`);
+  if (targetHost) {
+    const isExternalActive = await isServerRunning(targetHost);
+    if (!isExternalActive) {
+      console.error(`❌ Error: El servidor especificado en API_URL (${targetHost}) no responde.`);
+      process.exit(1);
+    }
+    baseUrl = targetHost;
+    console.log(`📡 Conectado al servidor externo en: ${targetHost}\n`);
   } else {
-    console.log(`⚙️  Servidor no detectado en ${targetHost}. Iniciando servidor embebido para la prueba...`);
+    console.log(`⚙️  Iniciando servidor de pruebas embebido con el código actual...`);
     server = http.createServer(app);
     await new Promise(resolve => server.listen(0, resolve));
     const port = server.address().port;
@@ -248,6 +253,7 @@ async function runBatchTests() {
     invalidFormatRejected: 0,
     duplicatesRejected: 0,
     unexpectedErrors: 0,
+    sampleErrors: [],
     latencies: [],
   };
 
@@ -278,11 +284,11 @@ async function runBatchTests() {
     stats.processed++;
 
     // Clasificar y evaluar resultado
+    let isExpected = false;
     if (item.category === 'VALID_NORMAL') {
       if (status === 200 && body && body.transaction && body.transaction.estado === 'Procesada') {
         stats.validNormalOk++;
-      } else {
-        stats.unexpectedErrors++;
+        isExpected = true;
       }
     } else if (item.category === 'VALID_BURST_FRAUD') {
       if (status === 200) {
@@ -291,26 +297,36 @@ async function runBatchTests() {
         } else {
           stats.burstNormalOk++;
         }
-      } else {
-        stats.unexpectedErrors++;
+        isExpected = true;
       }
     } else if (item.category === 'INVALID_HASH') {
       if (status === 400 && body && body.error === 'INVALID_HASH' && body.transaction && body.transaction.estado === 'Hash inválido') {
         stats.invalidHashAudited++;
-      } else {
-        stats.unexpectedErrors++;
+        isExpected = true;
       }
     } else if (item.category === 'INVALID_FORMAT') {
       if (status === 400 && body && body.error === 'VALIDATION_ERROR') {
         stats.invalidFormatRejected++;
-      } else {
-        stats.unexpectedErrors++;
+        isExpected = true;
       }
     } else if (item.category === 'INVALID_DUPLICATE') {
       if (status === 409 && body && body.error === 'DUPLICATE_TRANSACTION') {
         stats.duplicatesRejected++;
-      } else {
-        stats.unexpectedErrors++;
+        isExpected = true;
+      }
+    }
+
+    if (!isExpected) {
+      stats.unexpectedErrors++;
+      if (stats.sampleErrors.length < 5) {
+        stats.sampleErrors.push({
+          category: item.category,
+          expectedStatus: item.expectedStatus,
+          status,
+          body,
+          errorMsg,
+          description: item.description,
+        });
       }
     }
 
@@ -384,7 +400,13 @@ async function runBatchTests() {
   if (stats.unexpectedErrors === 0) {
     console.log('🎉 TODAS LAS 210 PETICIONES SE COMPORTARON EXACTAMENTE SEGÚN LO ESPERADO.');
   } else {
-    console.log(`⚠️  ATENCIÓN: Hubo ${stats.unexpectedErrors} respuestas inesperadas.`);
+    console.log(`⚠️  ATENCIÓN: Hubo ${stats.unexpectedErrors} respuestas inesperadas.\n`);
+    console.log('🔍 Muestra de respuestas inesperadas (hasta 5 casos):');
+    stats.sampleErrors.forEach((err, idx) => {
+      console.log(`  [${idx + 1}] Caso: ${err.description} (${err.category})`);
+      console.log(`      Status recibido: ${err.status} (esperado: ${err.expectedStatus})`);
+      console.log(`      Respuesta: ${JSON.stringify(err.body || err.errorMsg)}`);
+    });
   }
   console.log('='.repeat(80) + '\n');
 

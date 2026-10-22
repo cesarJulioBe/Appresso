@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node testValidateTransaction.js",
     "test:hash": "node testHash.js",
-    "test:batch": "node testTransactionsBatch.js"
+    "test:batch": "node testTransactionsBatch.js",
+    "test:batch350": "node testTransactionsBatch350.js"
   },
   "keywords": [],
   "author": "",
