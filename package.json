@@ -13,6 +13,7 @@
     "load:batch350": "node scripts/transactionsBatch350.js",
     "load:ngrok300": "node scripts/ngrokBatch300.js",
     "load:ngrok700": "node scripts/ngrokBatch700.js",
+    "db:reset-fraud": "node scripts/resetFraudData.js",
     "benchmark": "node scripts/benchmark/runBenchmark.js"
   },
   "keywords": [],

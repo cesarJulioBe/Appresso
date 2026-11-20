@@ -9,9 +9,14 @@ function createFraudRoutes(fraudController) {
   const router = express.Router();
 
   const receiveHandler = asyncHandler(fraudController.receiveTransaction);
+  router.post('/', receiveHandler);
   router.post('/transactions', receiveHandler);
+  router.post('/transaction', receiveHandler);
   router.post('/api/transactions', receiveHandler);
+  router.post('/api/transaction', receiveHandler);
   router.post('/fraud/transactions', receiveHandler);
+  router.post('/transacciones', receiveHandler);
+  router.post('/api/transacciones', receiveHandler);
 
   router.get('/fraud/stats', asyncHandler(fraudController.getStats));
   router.get('/fraud/dashboard', asyncHandler(fraudController.getDashboard));
