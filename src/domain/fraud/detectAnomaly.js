@@ -1,7 +1,14 @@
 const validateTransactionHash = require('./validateTransactionHash');
 const getThresholdByTime = require('./getThresholdByTime');
 
-function detectAnomaly(transaction, slidingWindow, thresholds, secret, detectionDate = new Date()) {
+function detectAnomaly(
+  transaction,
+  slidingWindow,
+  thresholds = getThresholdByTime.DEFAULT_THRESHOLDS,
+  secret,
+  detectionDate = null,
+  timeZone = 'America/Bogota'
+) {
   const isHashValid = validateTransactionHash(transaction, secret);
   if (!isHashValid) {
     return {
@@ -11,8 +18,10 @@ function detectAnomaly(transaction, slidingWindow, thresholds, secret, detection
     };
   }
 
-  const transactionDate = new Date(detectionDate);
-  const thresholdInfo = getThresholdByTime(transactionDate, thresholds);
+  // Extrae la fecha directamente de los datos de la transacción en memoria
+  const rawDate = detectionDate || transaction.date;
+  const transactionDate = rawDate instanceof Date ? rawDate : new Date(rawDate);
+  const thresholdInfo = getThresholdByTime(rawDate, thresholds, timeZone);
 
   if (!thresholdInfo) {
     return { isHashValid, isAnomaly: false, reason: 'No se encontró franja horaria configurada' };
