@@ -1,0 +1,23 @@
+{
+  "modelName": "Keras Sequential Fraud Classifier",
+  "framework": "TensorFlow.js / Keras Layers API",
+  "architecture": "Dense(16, ReLU) -> Dropout(0.1) -> Dense(8, ReLU) -> Dense(1, Sigmoid)",
+  "inputFeatures": [
+    "monto",
+    "hora",
+    "metodoPago",
+    "firmaInvalida",
+    "frecuenciaVentana",
+    "porcentajeDescuento",
+    "tasaAnulacionUsuario",
+    "canal"
+  ],
+  "baseSamplesCount": 24,
+  "augmentedSamplesCount": 72,
+  "augmentationFactor": 2,
+  "epochs": 35,
+  "finalLoss": 0.0009,
+  "finalAccuracy": 1,
+  "trainedAt": "2026-11-22T07:25:03.039Z",
+  "savedPath": "/Users/cesarjulioberrio/Documents/Appresso/src/infrastructure/ai/saved_models/fraud_classifier"
+}

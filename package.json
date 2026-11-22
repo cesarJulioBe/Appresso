@@ -14,6 +14,7 @@
     "load:ngrok300": "node scripts/ngrokBatch300.js",
     "load:ngrok700": "node scripts/ngrokBatch700.js",
     "db:reset-fraud": "node scripts/resetFraudData.js",
+    "db:migrate": "node -e \"const db = require('./src/infrastructure/database/connection'); const { seedInitialOperationalData } = require('./src/infrastructure/database/migrations'); seedInitialOperationalData(db).then(() => console.log('Esquema y semilla operativa listos')).finally(() => db.close());\"",
     "benchmark": "node scripts/benchmark/runBenchmark.js"
   },
   "keywords": [],
@@ -21,10 +22,12 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "pg": "^8.23.0",
+    "simple-statistics": "^8.0.0",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
   }

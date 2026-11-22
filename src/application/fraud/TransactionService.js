@@ -241,7 +241,7 @@ class TransactionService {
     }
 
     const secret = this.secret || process.env.HMAC_SECRET;
-    const idTxn = Date.now();
+    const idTxn = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     const date = this.clock().toISOString();
     const base = {
       idTxn,

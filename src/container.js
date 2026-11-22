@@ -9,6 +9,8 @@ const {
   TransactionRepository,
   AnomalyRepository,
   ThresholdRepository,
+  CatalogRepository,
+  BillingRepository,
 } = require('./infrastructure/database/repositories');
 
 const ActionStack = require('./domain/delivery/ActionStack');
@@ -21,12 +23,17 @@ const AnalyticsService = require('./application/analytics/AnalyticsService');
 const TransactionService = require('./application/fraud/TransactionService');
 const FraudReportService = require('./application/fraud/FraudReportService');
 const ThresholdService = require('./application/fraud/ThresholdService');
+const OperationalService = require('./application/operational/OperationalService');
+const DataQualityService = require('./application/quality/DataQualityService');
+const BenchmarkService = require('./application/analytics/BenchmarkService');
+const AiService = require('./application/ai/AiService');
 
 const OrderController = require('./interfaces/http/controllers/OrderController');
 const QueueController = require('./interfaces/http/controllers/QueueController');
 const DeliveryController = require('./interfaces/http/controllers/DeliveryController');
 const AnalyticsController = require('./interfaces/http/controllers/AnalyticsController');
 const FraudController = require('./interfaces/http/controllers/FraudController');
+const OperationalController = require('./interfaces/http/controllers/OperationalController');
 
 function buildContainer({
   db = defaultDb,
@@ -45,6 +52,8 @@ function buildContainer({
     anomalyRepository: customRepositories.anomalyRepository || new AnomalyRepository({ db }),
     thresholdRepository:
       customRepositories.thresholdRepository || new ThresholdRepository({ db }),
+    catalogRepository: customRepositories.catalogRepository || new CatalogRepository({ db }),
+    billingRepository: customRepositories.billingRepository || new BillingRepository({ db }),
   };
 
   // Estado compartido en memoria (pila de acciones para deshacer y ventana deslizante de fraude)
@@ -56,6 +65,40 @@ function buildContainer({
   const thresholdService = new ThresholdService({
     thresholdRepository: repositories.thresholdRepository,
     logger: childLogger('ThresholdService'),
+  });
+
+  const aiService = new AiService({
+    userRepository: repositories.userRepository,
+    orderRepository: repositories.orderRepository,
+    billingRepository: repositories.billingRepository,
+    transactionRepository: repositories.transactionRepository,
+    logger: childLogger('AiService'),
+  });
+
+  const operationalService = new OperationalService({
+    userRepository: repositories.userRepository,
+    catalogRepository: repositories.catalogRepository,
+    orderRepository: repositories.orderRepository,
+    billingRepository: repositories.billingRepository,
+    aiService,
+    secret,
+    logger: childLogger('OperationalService'),
+  });
+
+  const dataQualityService = new DataQualityService({
+    userRepository: repositories.userRepository,
+    catalogRepository: repositories.catalogRepository,
+    billingRepository: repositories.billingRepository,
+    db,
+    logger: childLogger('DataQualityService'),
+  });
+
+  const benchmarkService = new BenchmarkService({
+    orderRepository: repositories.orderRepository,
+    billingRepository: repositories.billingRepository,
+    transactionRepository: repositories.transactionRepository,
+    catalogRepository: repositories.catalogRepository,
+    logger: childLogger('BenchmarkService'),
   });
 
   const services = {
@@ -94,6 +137,10 @@ function buildContainer({
       anomalyRepository: repositories.anomalyRepository,
       logger: childLogger('FraudReportService'),
     }),
+    operationalService,
+    dataQualityService,
+    benchmarkService,
+    aiService,
   };
 
   const controllers = {
@@ -105,6 +152,12 @@ function buildContainer({
       transactionService: services.transactionService,
       fraudReportService: services.fraudReportService,
       thresholdService: services.thresholdService,
+    }),
+    operationalController: new OperationalController({
+      operationalService: services.operationalService,
+      dataQualityService: services.dataQualityService,
+      benchmarkService: services.benchmarkService,
+      aiService: services.aiService,
     }),
   };
 

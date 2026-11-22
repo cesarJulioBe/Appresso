@@ -1,7 +1,16 @@
 const config = require('./config/env');
 const logger = require('./infrastructure/logging/logger').child('Server');
 const db = require('./infrastructure/database/connection');
+const { seedInitialOperationalData } = require('./infrastructure/database/migrations');
 const app = require('./app');
+
+seedInitialOperationalData(db, config.hmacSecret)
+  .then(() => {
+    logger.info('Esquema de base de datos y datos operativos iniciales verificados');
+  })
+  .catch((err) => {
+    logger.error('Error al verificar migraciones iniciales', { error: err.message });
+  });
 
 const server = app.listen(config.port, () => {
   logger.info(`Servidor corriendo en http://localhost:${config.port}`, {

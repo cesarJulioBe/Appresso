@@ -1,0 +1,10 @@
+{
+  "modelName": "Keras Sequential Demand & Amount Regressor",
+  "framework": "TensorFlow.js / Keras Layers API",
+  "architecture": "Dense(12, ReLU) -> Dense(8, ReLU) -> Dense(2, Linear)",
+  "samplesCount": 196,
+  "epochs": 30,
+  "finalMseLoss": 0,
+  "trainedAt": "2026-11-22T07:25:03.244Z",
+  "savedPath": "/Users/cesarjulioberrio/Documents/Appresso/src/infrastructure/ai/saved_models/demand_regressor"
+}

@@ -6,8 +6,19 @@ class OrderRepository {
   }
 
   toOrder(row) {
-    const order = new Order(row.id, row.customer, row.products, row.status);
+    const order = new Order(row.id, row.customer, row.products || [], row.status);
     order.createdAt = row.created_at;
+    order.canal = row.canal || 'presencial';
+    order.usuarioId = row.usuario_id || null;
+    order.empleadoId = row.empleado_id || null;
+    order.subtotal = row.subtotal !== undefined && row.subtotal !== null
+      ? Number(row.subtotal)
+      : order.totalAmount();
+    order.descuento = Number(row.descuento || 0);
+    order.impuestos = Number(row.impuestos || 0);
+    order.total = row.total !== undefined && row.total !== null && Number(row.total) > 0
+      ? Number(row.total)
+      : order.totalAmount();
     return order;
   }
 
@@ -17,6 +28,40 @@ class OrderRepository {
        VALUES ($1, $2, 'Requested')
        RETURNING *`,
       [customer, JSON.stringify(products)]
+    );
+    return this.toOrder(result.rows[0]);
+  }
+
+  async createExtended({
+    customer,
+    products,
+    status = 'Requested',
+    usuarioId = null,
+    empleadoId = null,
+    canal = 'presencial',
+    subtotal = 0,
+    descuento = 0,
+    impuestos = 0,
+    total = 0,
+  }) {
+    const result = await this.db.query(
+      `INSERT INTO orders (
+        customer, products, status, usuario_id, empleado_id,
+        canal, subtotal, descuento, impuestos, total
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *`,
+      [
+        customer,
+        JSON.stringify(products),
+        status,
+        usuarioId,
+        empleadoId,
+        canal,
+        subtotal,
+        descuento,
+        impuestos,
+        total,
+      ]
     );
     return this.toOrder(result.rows[0]);
   }
