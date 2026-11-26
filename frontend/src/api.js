@@ -1,186 +1,66 @@
+/**
+ * ============================================================================
+ * ARCHIVO: frontend/src/api.js
+ * CAPA: Cliente HTTP del Frontend React (Comunicación con el Backend Express)
+ * ============================================================================
+ * RESPONSABILIDAD ÚNICA:
+ *   Centralizar TODAS las peticiones `fetch` desde el navegador hacia el
+ *   servidor Express (`http://localhost:3000`), agrupadas en los 5 bloques
+ *   unificados del sistema:
+ *     1. Módulos Operativos ERP (`/operational/*`): Usuarios, Categorías,
+ *        Ítems/Stock, Pedidos Multicanal, Facturas y Pagos.
+ *     2. Calidad y Limpieza de Datos (`/operational/quality/*`).
+ *     3. Integridad Criptográfica Hash Chain (`/operational/integrity/*`).
+ *     4. Algoritmos y Benchmark Experimental (`/operational/benchmarks`).
+ *     5. Modelos de IA No LLM (`/ai/*`) y Monitoreo Transaccional (`/fraud/*`).
+ * ============================================================================
+ */
+
+// Lee la URL base desde `.env` de Vite o usa `http://localhost:3000` en desarrollo local
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
-export async function createOrder(customer, products) {
-  const response = await fetch(`${API_BASE}/orders`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ customer, products }),
-  });
-  if (!response.ok) throw new Error('Error al crear el pedido');
-  return response.json();
-}
-
-export async function fetchOrders(page = 1, pageSize = 20) {
-  const params = new URLSearchParams({ page, pageSize });
-  const response = await fetch(`${API_BASE}/orders?${params}`);
-  if (!response.ok) throw new Error('Error al obtener pedidos');
-  return response.json();
-}
-
-export async function fetchStatistics() {
-  const response = await fetch(`${API_BASE}/statistics`);
-  if (!response.ok) throw new Error('Error al obtener estadísticas');
-  return response.json();
-}
-
-export async function fetchLoyaltyProgression() {
-  const response = await fetch(`${API_BASE}/loyalty/progression`);
-  if (!response.ok) throw new Error('Error al obtener progresión');
-  return response.json();
-}
-
-export async function predictSales(salesHistory) {
-  const response = await fetch(`${API_BASE}/sales/predict`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ salesHistory }),
-  });
-  if (!response.ok) throw new Error('Error al predecir ventas');
-  return response.json();
-}
-
-export async function searchOrder(id) {
-  const response = await fetch(`${API_BASE}/orders/search/${id}`);
-  if (!response.ok) throw new Error('Error al buscar el pedido');
-  return response.json();
-}
-
-export async function fetchPendingQueue() {
-  const response = await fetch(`${API_BASE}/queue/pending`);
-  if (!response.ok) throw new Error('Error al consultar la cola');
-  return response.json();
-}
-
-export async function attendNext() {
-  const response = await fetch(`${API_BASE}/queue/next`, { method: 'POST' });
-  if (!response.ok) throw new Error('No hay pedidos pendientes');
-  return response.json();
-}
-
-export async function undoLastAction() {
-  const response = await fetch(`${API_BASE}/orders/undo`, { method: 'POST' });
-  if (!response.ok) throw new Error('No hay acciones para deshacer');
-  return response.json();
-}
-
-export async function fetchCities() {
-  const response = await fetch(`${API_BASE}/delivery/cities`);
-  if (!response.ok) throw new Error('Error al obtener ciudades');
-  return response.json();
-}
-
-export async function fetchRoute(from, to, kmPerLiter, pricePerLiter) {
-  const params = new URLSearchParams({ from, to, kmPerLiter, pricePerLiter });
-  const response = await fetch(`${API_BASE}/delivery/route?${params}`);
-  if (!response.ok) throw new Error('No existe ruta entre esas ciudades');
-  return response.json();
-}
-
-export async function fetchRoutes() {
-  const response = await fetch(`${API_BASE}/delivery/routes`);
-  if (!response.ok) throw new Error('Error al listar rutas');
-  return response.json();
-}
-
-export async function createRoute(origin, destination, distanceKm) {
-  const response = await fetch(`${API_BASE}/delivery/routes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ origin, destination, distanceKm }),
-  });
-  if (!response.ok) throw new Error('Error al crear la ruta');
-  return response.json();
-}
-
-export async function deleteRoute(id) {
-  const response = await fetch(`${API_BASE}/delivery/routes/${id}`, { method: 'DELETE' });
-  if (!response.ok) throw new Error('Error al eliminar la ruta');
-  return response.json();
-}
-
-export async function fetchFraudStats() {
-  const response = await fetch(`${API_BASE}/fraud/stats`);
-  if (!response.ok) throw new Error('Error al obtener estadísticas de fraude');
-  return response.json();
-}
-
-export async function fetchFraudDashboard() {
-  const response = await fetch(`${API_BASE}/fraud/dashboard`);
-  if (!response.ok) throw new Error('Error al obtener el dashboard de fraude');
-  return response.json();
-}
-
-export async function fetchAnomalies() {
-  const response = await fetch(`${API_BASE}/fraud/anomalies`);
-  if (!response.ok) throw new Error('Error al listar anomalías');
-  return response.json();
-}
-
-export async function sendTestTransaction(user, value, paymentMethod) {
-  const response = await fetch(`${API_BASE}/fraud/simulate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user, value, paymentMethod }),
-  });
-  if (!response.ok) throw new Error('Error al simular transacción');
-  return response.json();
-}
-
-export async function fetchTransactions() {
-  const response = await fetch(`${API_BASE}/fraud/transactions`);
-  if (!response.ok) throw new Error('Error al listar transacciones');
-  return response.json();
-}
-
-export async function fetchThresholds() {
-  const response = await fetch(`${API_BASE}/fraud/thresholds`);
-  if (!response.ok) throw new Error('Error al obtener umbrales');
-  return response.json();
-}
-
-export async function updateThreshold(franja, umbralTransacciones, ventanaSegundos) {
-  const response = await fetch(`${API_BASE}/fraud/thresholds/${encodeURIComponent(franja)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ umbralTransacciones, ventanaSegundos }),
-  });
-  if (!response.ok) throw new Error('Error al actualizar el umbral');
-  return response.json();
-}
-
-// ============================================================================
-// NUEVOS ENDPOINTS: MÓDULOS OPERATIVOS, CALIDAD, INTEGRIDAD, BENCHMARK E IA
-// ============================================================================
-
+/**
+ * Función base reutilizable (`DRY`) para ejecutar peticiones HTTP JSON hacia Express.
+ * - Agrega automáticamente la cabecera `Content-Type: application/json`.
+ * - Convierte la respuesta a objeto JavaScript con `response.json()`.
+ * - Si el servidor responde un error (400, 404, 409, 500), lanza un `Error` con el mensaje claro del backend.
+ */
 async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
+  // Intentamos leer el cuerpo JSON; si viene vacío devolvemos un objeto vacío `{}`
   const data = await response.json().catch(() => ({}));
+  // Si el código HTTP no está entre 200 y 299, lanzamos excepción para que el componente muestre alerta
   if (!response.ok) {
     throw new Error(data.message || data.error || 'Error en la petición al servidor');
   }
   return data;
 }
 
+// ============================================================================
+// 1. MÓDULOS OPERATIVOS ERP (USUARIOS, CATEGORÍAS, ÍTEMS, PEDIDOS, FACTURAS, PAGOS)
+// ============================================================================
+
+// Resumen ejecutivo consolidado -> GET /operational/summary
 export const fetchExecutiveSummary = () => apiRequest('/operational/summary');
 
-// Usuarios
+// Usuarios con roles ('cliente' | 'empleado' | 'admin')
 export const fetchOperationalUsers = () => apiRequest('/operational/users');
 export const createOperationalUser = (payload) =>
   apiRequest('/operational/users', { method: 'POST', body: JSON.stringify(payload) });
 export const deleteOperationalUser = (id) =>
   apiRequest(`/operational/users/${id}`, { method: 'DELETE' });
 
-// Categorías
+// Categorías con normalización y unificación automática
 export const fetchCategories = () => apiRequest('/operational/categories');
 export const createCategory = (payload) =>
   apiRequest('/operational/categories', { method: 'POST', body: JSON.stringify(payload) });
 export const deleteCategory = (id) =>
   apiRequest(`/operational/categories/${id}`, { method: 'DELETE' });
 
-// Ítems / Inventario
+// Ítems del catálogo e inventario (stock)
 export const fetchCatalogItems = () => apiRequest('/operational/items');
 export const createCatalogItem = (payload) =>
   apiRequest('/operational/items', { method: 'POST', body: JSON.stringify(payload) });
@@ -189,13 +69,22 @@ export const updateCatalogItem = (id, payload) =>
 export const deleteCatalogItem = (id) =>
   apiRequest(`/operational/items/${id}`, { method: 'DELETE' });
 
-// Pedidos Multicanal
+// Pedidos multicanal unificados (consultar paginado, crear descontando stock, cambiar estado y anular devolviendo stock)
+export const fetchOperationalOrders = (page = 1, pageSize = 15) => {
+  const params = new URLSearchParams({ page, pageSize });
+  return apiRequest(`/operational/orders?${params}`);
+};
 export const createMultichannelOrder = (payload) =>
   apiRequest('/operational/orders', { method: 'POST', body: JSON.stringify(payload) });
+export const updateOperationalOrderStatus = (id, status) =>
+  apiRequest(`/operational/orders/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
 export const cancelOperationalOrder = (id) =>
   apiRequest(`/operational/orders/${id}/cancel`, { method: 'POST' });
 
-// Facturas
+// Facturación consecutiva con impuestos (IVA), descuentos y hash encadenado
 export const fetchInvoices = () => apiRequest('/operational/invoices');
 export const generateInvoice = (payload) =>
   apiRequest('/operational/invoices', { method: 'POST', body: JSON.stringify(payload) });
@@ -205,19 +94,25 @@ export const cancelInvoice = (id, reason) =>
     body: JSON.stringify({ reason }),
   });
 
-// Pagos
+// Pagos con comprobante verificable y hash encadenado
 export const fetchPayments = () => apiRequest('/operational/payments');
 export const processPayment = (payload) =>
   apiRequest('/operational/payments', { method: 'POST', body: JSON.stringify(payload) });
 
-// Calidad y Limpieza de Datos
+// ============================================================================
+// 2. CALIDAD Y LIMPIEZA AUTOMÁTICA DE DATOS
+// ============================================================================
+
 export const fetchQualityReport = () => apiRequest('/operational/quality/report');
 export const runDataAutoClean = () =>
   apiRequest('/operational/quality/clean', { method: 'POST' });
 export const seedDirtyTestData = () =>
   apiRequest('/operational/quality/seed-dirty', { method: 'POST' });
 
-// Integridad Criptográfica (Hash Encadenado)
+// ============================================================================
+// 3. INTEGRIDAD CRIPTOGRÁFICA (HASH ENCADENADO DE FACTURAS Y PAGOS)
+// ============================================================================
+
 export const verifyChainIntegrity = () => apiRequest('/operational/integrity/verify');
 export const simulateChainTampering = (type = 'invoice_amount') =>
   apiRequest('/operational/integrity/tamper-demo', {
@@ -227,14 +122,24 @@ export const simulateChainTampering = (type = 'invoice_amount') =>
 export const restoreChainIntegrity = () =>
   apiRequest('/operational/integrity/restore', { method: 'POST' });
 
-// Algoritmos y Benchmark Experimental
-export const fetchAlgorithmBenchmarks = ({ entity = 'orders', sortBy = 'date', searchId = '' } = {}) => {
+// ============================================================================
+// 4. ALGORITMOS O(n), O(n²), O(n log n), O(log n) Y BENCHMARK EXPERIMENTAL
+// ============================================================================
+
+export const fetchAlgorithmBenchmarks = ({
+  entity = 'orders',
+  sortBy = 'date',
+  searchId = '',
+} = {}) => {
   const params = new URLSearchParams({ entity, sortBy });
   if (searchId !== '' && searchId !== null) params.set('searchId', searchId);
   return apiRequest(`/operational/benchmarks?${params}`);
 };
 
-// Inteligencia Artificial No LLM (Keras/TensorFlow + Simple Statistics)
+// ============================================================================
+// 5. INTELIGENCIA ARTIFICIAL NO LLM (KERAS/TENSORFLOW + SIMPLE STATISTICS)
+// ============================================================================
+
 export const fetchAiStatus = () => apiRequest('/ai/status');
 export const trainAiModels = (payload = { epochs: 35, augmentationFactor: 2 }) =>
   apiRequest('/ai/train', { method: 'POST', body: JSON.stringify(payload) });
@@ -246,3 +151,41 @@ export const predictDemandAndAmount = (payload) =>
   apiRequest('/ai/predict-demand', { method: 'POST', body: JSON.stringify(payload) });
 export const fetchUserBehaviorProfiles = () => apiRequest('/ai/user-profiles');
 export const fetchOperationalPatterns = () => apiRequest('/ai/patterns');
+
+// ============================================================================
+// 6. MONITOREO DE TRANSACCIONES HMAC-SHA256 Y VENTANA DESLIZANTE
+// ============================================================================
+
+export const fetchFraudStats = () => apiRequest('/fraud/stats');
+export const fetchFraudDashboard = () => apiRequest('/fraud/dashboard');
+export const fetchAnomalies = () => apiRequest('/fraud/anomalies');
+export const fetchTransactions = () => apiRequest('/fraud/transactions');
+export const fetchThresholds = () => apiRequest('/fraud/thresholds');
+export const sendTestTransaction = (user, value, paymentMethod) =>
+  apiRequest('/fraud/simulate', {
+    method: 'POST',
+    body: JSON.stringify({ user, value, paymentMethod }),
+  });
+export const updateThreshold = (franja, umbralTransacciones, ventanaSegundos) =>
+  apiRequest(`/fraud/thresholds/${encodeURIComponent(franja)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ umbralTransacciones, ventanaSegundos }),
+  });
+
+// ============================================================================
+// 7. PLANIFICACIÓN DE RUTAS DE ENTREGA (GRAFO PONDERADO + ALGORITMO DE DIJKSTRA)
+// ============================================================================
+
+export const fetchCities = () => apiRequest('/delivery/cities');
+export const fetchRoutes = () => apiRequest('/delivery/routes');
+export const fetchRoute = (from, to, kmPerLiter, pricePerLiter) => {
+  const params = new URLSearchParams({ from, to, kmPerLiter, pricePerLiter });
+  return apiRequest(`/delivery/route?${params}`);
+};
+export const createRoute = (origin, destination, distanceKm) =>
+  apiRequest('/delivery/routes', {
+    method: 'POST',
+    body: JSON.stringify({ origin, destination, distanceKm }),
+  });
+export const deleteRoute = (id) =>
+  apiRequest(`/delivery/routes/${id}`, { method: 'DELETE' });

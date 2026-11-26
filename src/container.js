@@ -1,7 +1,24 @@
+/**
+ * ============================================================================
+ * ARCHIVO: src/container.js
+ * CAPA: Raíz de Composición (Composition Root — Inyección de Dependencias)
+ * ============================================================================
+ * RESPONSABILIDAD ÚNICA (SRP) Y PRINCIPIO DE INVERSIÓN DE DEPENDENCIAS (DIP):
+ *   Ser el ÚNICO archivo de toda la aplicación que instancia y conecta entre sí
+ *   las piezas concretas del sistema:
+ *     1. Los 8 Repositorios SQL (`src/infrastructure/database/repositories/`)
+ *     2. La ventana deslizante en memoria (`SlidingWindow`)
+ *     3. Los 8 Servicios de Casos de Uso (`src/application/`)
+ *     4. Los 3 Controladores HTTP (`DeliveryController`, `FraudController` y
+ *        `OperationalController`)
+ * ============================================================================
+ */
+
 const config = require('./config/env');
 const defaultDb = require('./infrastructure/database/connection');
 const defaultLogger = require('./infrastructure/logging/logger');
 
+// Importación de los 8 repositorios SQL activos (Capa de Infraestructura)
 const {
   OrderRepository,
   RouteRepository,
@@ -13,13 +30,11 @@ const {
   BillingRepository,
 } = require('./infrastructure/database/repositories');
 
-const ActionStack = require('./domain/delivery/ActionStack');
+// Estructura en memoria O(1) amortizado que rastrea ráfagas de transacciones por usuario
 const SlidingWindow = require('./domain/fraud/SlidingWindow');
 
-const OrderService = require('./application/orders/OrderService');
-const QueueService = require('./application/delivery/QueueService');
+// Importación de los 8 Servicios de Casos de Uso (Capa de Aplicación)
 const RouteService = require('./application/delivery/RouteService');
-const AnalyticsService = require('./application/analytics/AnalyticsService');
 const TransactionService = require('./application/fraud/TransactionService');
 const FraudReportService = require('./application/fraud/FraudReportService');
 const ThresholdService = require('./application/fraud/ThresholdService');
@@ -28,13 +43,14 @@ const DataQualityService = require('./application/quality/DataQualityService');
 const BenchmarkService = require('./application/analytics/BenchmarkService');
 const AiService = require('./application/ai/AiService');
 
-const OrderController = require('./interfaces/http/controllers/OrderController');
-const QueueController = require('./interfaces/http/controllers/QueueController');
+// Importación de los 3 Controladores HTTP (Capa de Interfaces)
 const DeliveryController = require('./interfaces/http/controllers/DeliveryController');
-const AnalyticsController = require('./interfaces/http/controllers/AnalyticsController');
 const FraudController = require('./interfaces/http/controllers/FraudController');
 const OperationalController = require('./interfaces/http/controllers/OperationalController');
 
+/**
+ * Construye y cablea todo el grafo de objetos del backend.
+ */
 function buildContainer({
   db = defaultDb,
   logger = defaultLogger,
@@ -43,6 +59,7 @@ function buildContainer({
   clock = () => new Date(),
   repositories: customRepositories = {},
 } = {}) {
+  // 1. CAPA DE INFRAESTRUCTURA: Instanciamos cada repositorio pasándole el pool `db`
   const repositories = {
     orderRepository: customRepositories.orderRepository || new OrderRepository({ db }),
     routeRepository: customRepositories.routeRepository || new RouteRepository({ db }),
@@ -56,10 +73,10 @@ function buildContainer({
     billingRepository: customRepositories.billingRepository || new BillingRepository({ db }),
   };
 
-  // Estado compartido en memoria (pila de acciones para deshacer y ventana deslizante de fraude)
-  const actionStack = new ActionStack();
+  // 2. ESTADO EN MEMORIA COMPARTIDO: Ventana móvil de timestamps por correo electrónico
   const slidingWindow = new SlidingWindow();
 
+  // Helper que etiqueta los logs con el nombre del servicio emisor
   const childLogger = (mod) => (typeof logger.child === 'function' ? logger.child(mod) : logger);
 
   const thresholdService = new ThresholdService({
@@ -101,24 +118,11 @@ function buildContainer({
     logger: childLogger('BenchmarkService'),
   });
 
+  // 3. CAPA DE APLICACIÓN
   const services = {
-    orderService: new OrderService({
-      orderRepository: repositories.orderRepository,
-      actionStack,
-      logger: childLogger('OrderService'),
-    }),
-    queueService: new QueueService({
-      orderRepository: repositories.orderRepository,
-      actionStack,
-      logger: childLogger('QueueService'),
-    }),
     routeService: new RouteService({
       routeRepository: repositories.routeRepository,
       logger: childLogger('RouteService'),
-    }),
-    analyticsService: new AnalyticsService({
-      orderRepository: repositories.orderRepository,
-      logger: childLogger('AnalyticsService'),
     }),
     thresholdService,
     transactionService: new TransactionService({
@@ -143,11 +147,9 @@ function buildContainer({
     aiService,
   };
 
+  // 4. CAPA DE INTERFACES HTTP
   const controllers = {
-    orderController: new OrderController({ orderService: services.orderService }),
-    queueController: new QueueController({ queueService: services.queueService }),
     deliveryController: new DeliveryController({ routeService: services.routeService }),
-    analyticsController: new AnalyticsController({ analyticsService: services.analyticsService }),
     fraudController: new FraudController({
       transactionService: services.transactionService,
       fraudReportService: services.fraudReportService,
@@ -164,7 +166,6 @@ function buildContainer({
   return {
     db,
     logger,
-    actionStack,
     slidingWindow,
     repositories,
     services,

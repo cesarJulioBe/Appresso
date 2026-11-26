@@ -1,3 +1,22 @@
+/**
+ * @file DataQualityAndIntegrity.jsx
+ * @description Vista de Auditoría de Calidad de Datos e Integridad Criptográfica (Hash Chain).
+ *
+ * - Vista de la interfaz que representa: Sección "Calidad e Integridad" dividida en dos paneles:
+ *   1) Diagnóstico y limpieza/normalización automática de registros sucios o duplicados.
+ *   2) Verificación criptográfica HMAC-SHA256 de la cadena de bloques/hashes de facturas y pagos,
+ *      con simuladores interactivos de ataques de alteración y restauración de la cadena.
+ * - Desde dónde se monta: Renderizado en `frontend/src/App.jsx` cuando `activeView === 'quality_integrity'`,
+ *   recibiendo la prop `onDataChanged={refresh}` para sincronizar el resto de la aplicación tras cambios.
+ * - Funciones de `frontend/src/api.js` que consume y rutas HTTP que dispara:
+ *   1. `fetchQualityReport()`          -> `GET /operational/quality/report` (al montar el componente)
+ *   2. `verifyChainIntegrity()`        -> `GET /operational/integrity/verify` (al montar el componente)
+ *   3. `seedDirtyTestData()`           -> `POST /operational/quality/seed-dirty` (botón "Inyectar Datos Sucios de Prueba")
+ *   4. `runDataAutoClean()`            -> `POST /operational/quality/clean` (botón "Ejecutar Limpieza y Normalización Automática")
+ *   5. `simulateChainTampering(type)`  -> `POST /operational/integrity/tamper-demo` (botones "Simular Factura Alterada" y "Simular Comprobante Falso")
+ *   6. `restoreChainIntegrity()`       -> `POST /operational/integrity/restore` (botón "Restaurar y Recalcular Cadena")
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import {
   fetchQualityReport,
@@ -9,11 +28,23 @@ import {
 } from '../api';
 
 export default function DataQualityAndIntegrity({ onDataChanged }) {
+  // Estado `quality`: almacena el reporte de calidad actual (puntaje 0-100% y desglose de anomalías de datos).
   const [quality, setQuality] = useState(null);
+
+  // Estado `cleanResult`: guarda el resumen y bitácora (`actionsLog`) tras ejecutar la limpieza automática.
   const [cleanResult, setCleanResult] = useState(null);
+
+  // Estado `integrity`: contiene el dictamen criptográfico de todos los eslabones de facturas y pagos.
   const [integrity, setIntegrity] = useState(null);
+
+  // Estado `loading`: bloquea los botones de acción mientras hay una petición HTTP en curso para evitar doble clic.
   const [loading, setLoading] = useState(false);
 
+  /**
+   * Callback `loadData`:
+   * Consulta en paralelo (`Promise.all`) el reporte de calidad (`GET /operational/quality/report`)
+   * y la verificación completa de hashes encadenados (`GET /operational/integrity/verify`).
+   */
   const loadData = useCallback(async () => {
     try {
       const [qRes, iRes] = await Promise.all([
@@ -27,10 +58,16 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
     }
   }, []);
 
+  // Efecto inicial: dispara `loadData()` automáticamente una vez cuando el usuario abre esta sección.
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  /**
+   * Manejador `handleSeedDirty` (evento `onClick`):
+   * Dispara `POST /operational/quality/seed-dirty` para insertar registros con errores intencionales
+   * (espacios extra, mayúsculas mezcladas, duplicados, precios mal formateados) y demostrar la caída del puntaje.
+   */
   const handleSeedDirty = async () => {
     setLoading(true);
     try {
@@ -43,6 +80,11 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
     }
   };
 
+  /**
+   * Manejador `handleRunClean` (evento `onClick`):
+   * Dispara `POST /operational/quality/clean` para normalizar textos/precios, fusionar duplicados,
+   * actualizar el reporte `quality`, mostrar el log de acciones en `cleanResult` y refrescar `App.jsx`.
+   */
   const handleRunClean = async () => {
     setLoading(true);
     try {
@@ -55,6 +97,11 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
     }
   };
 
+  /**
+   * Manejador `handleSimulateTamper` (evento `onClick`):
+   * Dispara `POST /operational/integrity/tamper-demo` con `type` (`'invoice_amount'` o `'fake_receipt'`)
+   * para adulterar un registro en la BD sin recalcular su firma HMAC y evidenciar la ruptura de la cadena.
+   */
   const handleSimulateTamper = async (type) => {
     setLoading(true);
     try {
@@ -66,6 +113,11 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
     }
   };
 
+  /**
+   * Manejador `handleRestoreIntegrity` (evento `onClick`):
+   * Dispara `POST /operational/integrity/restore` para sanear los datos adulterados y recalcular
+   * secuencialmente los eslabones `prev_hash` -> `hash_actual` de toda la cadena criptográfica.
+   */
   const handleRestoreIntegrity = async () => {
     setLoading(true);
     try {
@@ -79,7 +131,7 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
 
   return (
     <div className="flex flex-col gap-8">
-      {/* SECCIÓN 1: LIMPIEZA Y CALIDAD DE DATOS */}
+      {/* SECCIÓN 1: LIMPIEZA, NORMALIZACIÓN Y REPORTE DE CALIDAD DE DATOS */}
       <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm flex flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -90,6 +142,7 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
               Detecta y corrige ítems duplicados, precios mal escritos, categorías inconsistentes y clientes registrados dos veces.
             </p>
           </div>
+          {/* Botones de demostración: inyectar datos contaminados o ejecutar el pipeline automático de limpieza */}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -110,6 +163,7 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
           </div>
         </div>
 
+        {/* Tarjetas KPI con el puntaje global de calidad y el conteo detallado por categoría de inconsistencia */}
         {quality && (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-6">
             <div className="rounded-lg border border-neutral-200 p-3.5 bg-neutral-50">
@@ -171,6 +225,7 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
           </div>
         )}
 
+        {/* Resumen verde con la bitácora detallada de correcciones tras ejecutar `handleRunClean` */}
         {cleanResult && (
           <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-xs text-emerald-950">
             <p className="font-semibold text-sm mb-1">
@@ -201,6 +256,7 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
             </p>
           </div>
 
+          {/* Botones para simular ataques a la base de datos (factura o comprobante) y restaurar la cadena */}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -229,8 +285,10 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
           </div>
         </div>
 
+        {/* Estado general de la auditoría HMAC-SHA256 y explorador visual de eslabones */}
         {integrity && (
           <>
+            {/* Banner semáforo: verde si todos los hashes cuadran, rojo si se detectó manipulación */}
             <div
               className={`rounded-lg border p-4 flex items-center justify-between ${
                 integrity.isSystemIntegrityValid
@@ -254,7 +312,7 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
             </div>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              {/* Cadena de Facturas */}
+              {/* Columna izquierda: Eslabones de la Cadena de Facturas (`prev_hash` -> `hash_actual`) */}
               <div>
                 <h4 className="text-sm font-semibold text-neutral-900 mb-2">
                   Cadena de Facturas ({integrity.invoices.totalRecords} eslabones)
@@ -305,7 +363,7 @@ export default function DataQualityAndIntegrity({ onDataChanged }) {
                 </div>
               </div>
 
-              {/* Cadena de Pagos y Comprobantes */}
+              {/* Columna derecha: Eslabones de la Cadena de Pagos y Comprobantes */}
               <div>
                 <h4 className="text-sm font-semibold text-neutral-900 mb-2">
                   Cadena de Pagos y Comprobantes ({integrity.payments.totalRecords} eslabones)

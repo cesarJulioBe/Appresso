@@ -1,3 +1,20 @@
+/**
+ * ============================================================================
+ * ARCHIVO: src/application/delivery/RouteService.js
+ * CAPA: Aplicación — Casos de Uso de Planificación de Rutas y Entregas
+ * ============================================================================
+ * RESPONSABILIDAD ÚNICA (SRP):
+ *   Orquestar la administración de rutas entre ciudades y el cálculo del
+ *   trayecto más corto combinando `RouteRepository` (SQL), `DeliveryGraph`
+ *   (Dijkstra) y `estimateGasCost` (estimación de combustible).
+ *
+ * CERO REDUNDANCIA:
+ *   Las validaciones de negocio (`from` y `to` requeridos, `origin`,
+ *   `destination` y `distanceKm` requeridos) viven UNA SOLA VEZ aquí y NO se
+ *   duplican en validadores HTTP.
+ * ============================================================================
+ */
+
 const DeliveryGraph = require('../../domain/delivery/DeliveryGraph');
 const estimateGasCost = require('../../domain/delivery/estimateGasCost');
 const { ValidationError, NotFoundError } = require('../../domain/errors');
@@ -8,6 +25,7 @@ class RouteService {
     this.logger = logger;
   }
 
+  // Método privado que hidrata en memoria una instancia de `DeliveryGraph` con las filas de PostgreSQL
   async #buildGraphFromDB() {
     const rows = await this.routeRepository.findAll();
     const graph = new DeliveryGraph();
@@ -17,11 +35,14 @@ class RouteService {
     return graph;
   }
 
+  // Dispara: GET /delivery/cities
   async listCities() {
     return this.routeRepository.findCities();
   }
 
+  // Dispara: GET /delivery/route?from=...&to=...&kmPerLiter=...&pricePerLiter=...
   async calculateRoute({ from, to, kmPerLiter, pricePerLiter }) {
+    // Validación única de negocio (no repetida en la capa HTTP)
     if (!from || !to) {
       throw new ValidationError('from y to son obligatorios');
     }
@@ -41,7 +62,9 @@ class RouteService {
     return { path: result.path, distanceKm: result.distanceKm, gas };
   }
 
+  // Dispara: POST /delivery/routes
   async create({ origin, destination, distanceKm }) {
+    // Validación única de negocio
     if (!origin || !destination || !distanceKm) {
       throw new ValidationError('origin, destination y distanceKm son obligatorios');
     }
@@ -61,10 +84,12 @@ class RouteService {
     return created;
   }
 
+  // Dispara: GET /delivery/routes
   async list() {
     return this.routeRepository.findAll();
   }
 
+  // Dispara: DELETE /delivery/routes/:id
   async delete(id) {
     const deleted = await this.routeRepository.deleteById(id);
     if (!deleted) {

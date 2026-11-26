@@ -1,13 +1,43 @@
+/**
+ * @file AlgorithmBenchmark.jsx
+ * @description Laboratorio de Algoritmos y Análisis Experimental de Complejidad Computacional (Big-O).
+ *
+ * - Vista de la interfaz que representa: Sección "Algoritmos y Benchmark", donde se comparan
+ *   empíricamente algoritmos ingenuos vs optimizados (O(n) vs O(log n), O(n²) vs O(n log n),
+ *   O(n²) vs O(n) con Hash Map) tanto sobre los datos reales de PostgreSQL como sobre lotes
+ *   sintéticos escalables (`n = 100, 500, 1000, 2500`).
+ * - Desde dónde se monta: Renderizado en `frontend/src/App.jsx` cuando `activeView === 'benchmarks'`.
+ * - Funciones de `frontend/src/api.js` que consume y rutas HTTP que dispara:
+ *   - `fetchAlgorithmBenchmarks({ entity, sortBy, searchId })`
+ *     -> `GET /operational/benchmarks?entity=<entity>&sortBy=<sortBy>&searchId=<searchId>`
+ *     Se dispara automáticamente al montar o cambiar los filtros (`useEffect` sobre `runAnalysis`)
+ *     y manualmente al presionar el botón "Ejecutar Comparación".
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { fetchAlgorithmBenchmarks } from '../api';
 
 export default function AlgorithmBenchmark() {
+  // Estado `entity`: entidad de la base de datos a evaluar (`orders`, `invoices`, `payments` o `transactions`).
   const [entity, setEntity] = useState('orders');
+
+  // Estado `sortBy`: criterio de ordenamiento para enfrentar Bubble Sort O(n²) vs Merge Sort O(n log n) (`date` o `amount`).
   const [sortBy, setSortBy] = useState('date');
+
+  // Estado `searchId`: ID objetivo opcional para comparar Búsqueda Lineal O(n) vs Búsqueda Binaria O(log n).
   const [searchId, setSearchId] = useState('');
+
+  // Estado `data`: respuesta JSON del backend con `liveSystemMetrics` (datos reales) y `experimentalBenchmark` (escalabilidad).
   const [data, setData] = useState(null);
+
+  // Estado `loading`: indica cuando el backend está midiendo tiempos y operaciones elementales.
   const [loading, setLoading] = useState(false);
 
+  /**
+   * Callback `runAnalysis`:
+   * Invoca `GET /operational/benchmarks` enviando los parámetros actuales (`entity`, `sortBy`, `searchId`).
+   * Al estar envuelto en `useCallback`, se actualiza cada vez que cambia uno de esos filtros.
+   */
   const runAnalysis = useCallback(async () => {
     setLoading(true);
     try {
@@ -20,16 +50,18 @@ export default function AlgorithmBenchmark() {
     }
   }, [entity, sortBy, searchId]);
 
+  // Efecto reactivo: ejecuta automáticamente el benchmark al montar la vista y cuando cambian `entity`, `sortBy` o `searchId`.
   useEffect(() => {
     runAnalysis();
   }, [runAnalysis]);
 
+  // Accesos abreviados a las dos secciones de la respuesta del servidor
   const live = data?.liveSystemMetrics;
   const exp = data?.experimentalBenchmark;
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Barra de control interactiva */}
+      {/* Barra superior de control interactiva: selectores de entidad/criterio, input de ID y botón de ejecución */}
       <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm flex flex-wrap items-end justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold text-neutral-900">
@@ -41,6 +73,7 @@ export default function AlgorithmBenchmark() {
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
+          {/* Selector del módulo/tabla real sobre el cual medir búsqueda y ordenamiento */}
           <div>
             <label className="block text-xs font-medium text-neutral-700 mb-1">
               Módulo a Analizar
@@ -57,6 +90,7 @@ export default function AlgorithmBenchmark() {
             </select>
           </div>
 
+          {/* Selector de campo llave para los algoritmos de ordenamiento */}
           <div>
             <label className="block text-xs font-medium text-neutral-700 mb-1">
               Ordenar Por
@@ -71,6 +105,7 @@ export default function AlgorithmBenchmark() {
             </select>
           </div>
 
+          {/* Campo opcional para elegir el ID puntual a localizar en la prueba O(n) vs O(log n) */}
           <div>
             <label className="block text-xs font-medium text-neutral-700 mb-1">
               Buscar ID
@@ -84,6 +119,7 @@ export default function AlgorithmBenchmark() {
             />
           </div>
 
+          {/* Botón onClick -> vuelve a disparar `GET /operational/benchmarks` bajo demanda */}
           <button
             type="button"
             disabled={loading}
@@ -95,10 +131,10 @@ export default function AlgorithmBenchmark() {
         </div>
       </div>
 
-      {/* SECCIÓN 1: RESULTADOS SOBRE DATOS REALES DEL SISTEMA */}
+      {/* SECCIÓN 1: RESULTADOS EN VIVO SOBRE LOS REGISTROS REALES DE LA BASE DE DATOS */}
       {live && (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {/* 1. Búsqueda por ID */}
+          {/* Tarjeta 1: Búsqueda Lineal O(n) vs Búsqueda Binaria O(log n) por ID */}
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-neutral-900">
@@ -130,7 +166,7 @@ export default function AlgorithmBenchmark() {
             </div>
           </div>
 
-          {/* 2. Ordenamiento por Fecha o Monto */}
+          {/* Tarjeta 2: Ordenamiento Bubble Sort O(n²) vs Merge Sort O(n log n) */}
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-neutral-900">
@@ -162,7 +198,7 @@ export default function AlgorithmBenchmark() {
             </div>
           </div>
 
-          {/* 3. Conteo de Pedidos por Cliente */}
+          {/* Tarjeta 3: Conteo de Pedidos por Cliente con Doble Bucle O(n²) vs Tabla Hash O(n) */}
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-neutral-900">
@@ -194,7 +230,7 @@ export default function AlgorithmBenchmark() {
             </div>
           </div>
 
-          {/* 4. Suma de Ventas O(n) */}
+          {/* Tarjeta 4: Acumulación Lineal de Ventas en una sola pasada O(n) */}
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-neutral-900">
@@ -226,7 +262,7 @@ export default function AlgorithmBenchmark() {
             </div>
           </div>
 
-          {/* 5. Normalización y Unificación de Strings */}
+          {/* Tarjeta 5: Deduplicación y Normalización de Cadenas por Pares O(n²) vs Clave Canónica O(n) */}
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-neutral-900">
@@ -255,7 +291,7 @@ export default function AlgorithmBenchmark() {
             </div>
           </div>
 
-          {/* 6. Ranking de Ítems Más Vendidos */}
+          {/* Tarjeta 6: Ranking Top-K de Ítems Más Vendidos O(n + k log k) */}
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-neutral-900">
@@ -281,7 +317,7 @@ export default function AlgorithmBenchmark() {
         </div>
       )}
 
-      {/* SECCIÓN 2: TABLA EXPERIMENTAL DE ESCALABILIDAD (n = 100, 500, 1000, 2500) */}
+      {/* SECCIÓN 2: TABLA EXPERIMENTAL DE ESCALABILIDAD ASINTÓTICA (n = 100, 500, 1000, 2500) */}
       {exp && (
         <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm flex flex-col gap-5">
           <div>
@@ -293,6 +329,7 @@ export default function AlgorithmBenchmark() {
             </p>
           </div>
 
+          {/* Tabla comparativa de operaciones y milisegundos para cada volumen `n` */}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="border-b border-neutral-200 bg-neutral-50 text-neutral-600">
@@ -338,7 +375,7 @@ export default function AlgorithmBenchmark() {
             </table>
           </div>
 
-          {/* Documentación de optimizaciones logradas */}
+          {/* Tarjetas resumen del impacto Antes vs Después para sustentar las decisiones algorítmicas */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {exp.optimizationSummary.map((opt, idx) => (
               <div

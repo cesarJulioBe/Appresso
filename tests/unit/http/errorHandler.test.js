@@ -3,9 +3,13 @@ const assert = require('node:assert/strict');
 
 const errorHandler = require('../../../src/interfaces/http/middlewares/errorHandler');
 const {
+  requireJsonBody,
+  requirePositiveIntParam,
+  requireTextParam,
+} = require('../../../src/interfaces/http/validators/httpValidator');
+const {
   ValidationError,
   NotFoundError,
-  ConflictError,
 } = require('../../../src/domain/errors');
 const logger = require('../../../src/infrastructure/logging/logger');
 
@@ -25,7 +29,7 @@ function createMockRes() {
   };
 }
 
-describe('HTTP Layer - errorHandler & Logger Redaction', () => {
+describe('HTTP Layer - errorHandler, Transport Validators & Logger Redaction', () => {
   const mockReq = { method: 'POST', originalUrl: '/test' };
 
   it('formats operational error without code as { error: message }', () => {
@@ -85,5 +89,37 @@ describe('HTTP Layer - errorHandler & Logger Redaction', () => {
     assert.equal(sanitized.user, 'cl***@example.com');
     assert.equal(sanitized.hash, 'abcdef...[REDACTED]');
     assert.equal(sanitized.secret, 'top_se...[REDACTED]');
+  });
+
+  it('validates HTTP transport concerns in httpValidator without duplicating domain rules', () => {
+    let capturedErr = null;
+    requireJsonBody({ body: null }, {}, (err) => {
+      capturedErr = err;
+    });
+    assert.equal(capturedErr?.name, 'ValidationError');
+
+    capturedErr = undefined;
+    requireJsonBody({ body: { ok: true } }, {}, (err) => {
+      capturedErr = err;
+    });
+    assert.equal(capturedErr, undefined);
+
+    const validateId = requirePositiveIntParam('id');
+    validateId({ params: { id: 'abc' } }, {}, (err) => {
+      capturedErr = err;
+    });
+    assert.equal(capturedErr?.name, 'ValidationError');
+
+    capturedErr = undefined;
+    validateId({ params: { id: '15' } }, {}, (err) => {
+      capturedErr = err;
+    });
+    assert.equal(capturedErr, undefined);
+
+    const validateFranja = requireTextParam('franja');
+    validateFranja({ params: { franja: '   ' } }, {}, (err) => {
+      capturedErr = err;
+    });
+    assert.equal(capturedErr?.name, 'ValidationError');
   });
 });

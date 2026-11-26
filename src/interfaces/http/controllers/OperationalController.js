@@ -1,3 +1,25 @@
+/**
+ * ============================================================================
+ * ARCHIVO: src/interfaces/http/controllers/OperationalController.js
+ * CAPA: Interfaces HTTP — Controlador Unificado ERP, Calidad, Integridad,
+ *       Benchmark Experimental e Inteligencia Artificial No LLM
+ * ============================================================================
+ * RESPONSABILIDAD ÚNICA (SRP) Y ESTANDARIZACIÓN DE CÓDIGO:
+ *   Actuar exclusivamente como adaptador HTTP para los módulos del trabajo final:
+ *     1. Módulos Operativos (`OperationalService`): Usuarios, Categorías, Ítems,
+ *        Pedidos Multicanal con descuento de stock, Facturas y Pagos.
+ *     2. Calidad y Limpieza de Datos (`DataQualityService`).
+ *     3. Integridad Criptográfica Hash Chain (`OperationalService`).
+ *     4. Algoritmos y Benchmark Experimental (`BenchmarkService`).
+ *     5. Modelos de IA No LLM (`AiService`: Keras/TensorFlow + Simple Statistics).
+ *
+ * BUENA PRÁCTICA APLICADA:
+ *   Todos los métodos usan *class field arrow functions* (`fn = async (req, res) =>`),
+ *   igual que el resto de controladores del proyecto, permitiendo pasarlos
+ *   directamente a `asyncHandler(controller.fn)` sin funciones envolventes repetidas.
+ * ============================================================================
+ */
+
 class OperationalController {
   constructor({
     operationalService,
@@ -5,168 +27,212 @@ class OperationalController {
     benchmarkService,
     aiService,
   }) {
+    // Servicios de casos de uso inyectados desde `src/container.js`
     this.operationalService = operationalService;
     this.dataQualityService = dataQualityService;
     this.benchmarkService = benchmarkService;
     this.aiService = aiService;
   }
 
-  // ===== USUARIOS =====
+  // ===== 1. USUARIOS CON ROLES ('cliente' | 'empleado' | 'admin') =====
 
-  async listUsers(_req, res) {
+  // Dispara: GET /operational/users
+  listUsers = async (_req, res) => {
     const users = await this.operationalService.listUsers();
     res.json({ users });
-  }
+  };
 
-  async createUser(req, res) {
+  // Dispara: POST /operational/users
+  createUser = async (req, res) => {
     const result = await this.operationalService.createUser(req.body);
     res.status(201).json(result);
-  }
+  };
 
-  async updateUser(req, res) {
+  // Dispara: PUT /operational/users/:id
+  updateUser = async (req, res) => {
     const result = await this.operationalService.updateUser(
       Number(req.params.id),
       req.body
     );
     res.json(result);
-  }
+  };
 
-  async deleteUser(req, res) {
+  // Dispara: DELETE /operational/users/:id
+  deleteUser = async (req, res) => {
     const deleted = await this.operationalService.deleteUser(Number(req.params.id));
     res.json({ deleted });
-  }
+  };
 
-  // ===== CATEGORÍAS =====
+  // ===== 2. CATEGORÍAS (CON NORMALIZACIÓN Y UNIFICACIÓN AUTOMÁTICA) =====
 
-  async listCategories(_req, res) {
+  // Dispara: GET /operational/categories
+  listCategories = async (_req, res) => {
     const categories = await this.operationalService.listCategories();
     res.json({ categories });
-  }
+  };
 
-  async createCategory(req, res) {
+  // Dispara: POST /operational/categories
+  createCategory = async (req, res) => {
     const result = await this.operationalService.createCategory(req.body);
     res.status(201).json(result);
-  }
+  };
 
-  async updateCategory(req, res) {
+  // Dispara: PUT /operational/categories/:id
+  updateCategory = async (req, res) => {
     const result = await this.operationalService.updateCategory(
       Number(req.params.id),
       req.body
     );
     res.json(result);
-  }
+  };
 
-  async deleteCategory(req, res) {
+  // Dispara: DELETE /operational/categories/:id
+  deleteCategory = async (req, res) => {
     const deleted = await this.operationalService.deleteCategory(Number(req.params.id));
     res.json({ deleted });
-  }
+  };
 
-  // ===== ÍTEMS (INVENTARIO) =====
+  // ===== 3. ÍTEMS / CATÁLOGO DE PRODUCTOS Y STOCK =====
 
-  async listItems(_req, res) {
+  // Dispara: GET /operational/items
+  listItems = async (_req, res) => {
     const items = await this.operationalService.listItems();
     res.json({ items });
-  }
+  };
 
-  async createItem(req, res) {
+  // Dispara: POST /operational/items
+  createItem = async (req, res) => {
     const result = await this.operationalService.createItem(req.body);
     res.status(201).json(result);
-  }
+  };
 
-  async updateItem(req, res) {
+  // Dispara: PUT /operational/items/:id
+  updateItem = async (req, res) => {
     const result = await this.operationalService.updateItem(
       Number(req.params.id),
       req.body
     );
     res.json(result);
-  }
+  };
 
-  async deleteItem(req, res) {
+  // Dispara: DELETE /operational/items/:id
+  deleteItem = async (req, res) => {
     const deleted = await this.operationalService.deleteItem(Number(req.params.id));
     res.json({ deleted });
-  }
+  };
 
-  // ===== PEDIDOS MULTICANAL =====
+  // ===== 4. PEDIDOS MULTICANAL CON CONSULTA, ESTADOS Y DESCUENTO DE INVENTARIO =====
 
-  async createOperationalOrder(req, res) {
+  // Dispara: GET /operational/orders?page=1&pageSize=20
+  listOperationalOrders = async (req, res) => {
+    const page = parseInt(req.query.page, 10) || 1;
+    const pageSize = parseInt(req.query.pageSize, 10) || 20;
+    const result = await this.operationalService.listOperationalOrders(page, pageSize);
+    res.json(result);
+  };
+
+  // Dispara: POST /operational/orders
+  createOperationalOrder = async (req, res) => {
     const result = await this.operationalService.createOperationalOrder(req.body);
     res.status(201).json(result);
-  }
+  };
 
-  async cancelOrder(req, res) {
+  // Dispara: PATCH /operational/orders/:id/status
+  updateOperationalOrderStatus = async (req, res) => {
+    const result = await this.operationalService.updateOperationalOrderStatus(
+      Number(req.params.id),
+      req.body.status
+    );
+    res.json(result);
+  };
+
+  // Dispara: POST /operational/orders/:id/cancel
+  cancelOrder = async (req, res) => {
     const result = await this.operationalService.cancelOrder(Number(req.params.id));
     res.json(result);
-  }
+  };
 
-  // ===== FACTURAS =====
+  // ===== 5. FACTURACIÓN CON IMPUESTOS, DESCUENTOS, CONSECUTIVO Y HASH ENCADENADO =====
 
-  async listInvoices(_req, res) {
+  // Dispara: GET /operational/invoices
+  listInvoices = async (_req, res) => {
     const invoices = await this.operationalService.listInvoices();
     res.json({ invoices });
-  }
+  };
 
-  async createInvoice(req, res) {
+  // Dispara: POST /operational/invoices
+  createInvoice = async (req, res) => {
     const result = await this.operationalService.generateInvoice(req.body);
     res.status(201).json(result);
-  }
+  };
 
-  async cancelInvoice(req, res) {
+  // Dispara: POST /operational/invoices/:id/cancel
+  cancelInvoice = async (req, res) => {
     const result = await this.operationalService.cancelInvoice(
       Number(req.params.id),
       req.body?.reason
     );
     res.json(result);
-  }
+  };
 
-  // ===== PAGOS CON COMPROBANTE =====
+  // ===== 6. PAGOS CON COMPROBANTE ADJUNTO Y HASH ENCADENADO =====
 
-  async listPayments(_req, res) {
+  // Dispara: GET /operational/payments
+  listPayments = async (_req, res) => {
     const payments = await this.operationalService.listPayments();
     res.json({ payments });
-  }
+  };
 
-  async processPayment(req, res) {
+  // Dispara: POST /operational/payments
+  processPayment = async (req, res) => {
     const result = await this.operationalService.processPayment(req.body);
     res.status(201).json(result);
-  }
+  };
 
-  // ===== CALIDAD Y LIMPIEZA DE DATOS =====
+  // ===== 7. CALIDAD Y LIMPIEZA AUTOMÁTICA DE DATOS =====
 
-  async getQualityReport(_req, res) {
+  // Dispara: GET /operational/quality/report
+  getQualityReport = async (_req, res) => {
     const report = await this.dataQualityService.getQualityReport();
     res.json(report);
-  }
+  };
 
-  async runAutoClean(_req, res) {
+  // Dispara: POST /operational/quality/clean
+  runAutoClean = async (_req, res) => {
     const result = await this.dataQualityService.runAutoClean();
     res.json(result);
-  }
+  };
 
-  async seedDirtyData(_req, res) {
+  // Dispara: POST /operational/quality/seed-dirty
+  seedDirtyData = async (_req, res) => {
     const result = await this.dataQualityService.seedDirtyData();
     res.status(201).json(result);
-  }
+  };
 
-  // ===== INTEGRIDAD Y HASH ENCADENADO =====
+  // ===== 8. INTEGRIDAD CRIPTOGRÁFICA (CADENA DE HASHES) =====
 
-  async verifyIntegrity(_req, res) {
+  // Dispara: GET /operational/integrity/verify
+  verifyIntegrity = async (_req, res) => {
     const report = await this.operationalService.verifyIntegrity();
     res.json(report);
-  }
+  };
 
-  async simulateTampering(req, res) {
+  // Dispara: POST /operational/integrity/tamper-demo
+  simulateTampering = async (req, res) => {
     const report = await this.operationalService.simulateTampering(req.body || {});
     res.json(report);
-  }
+  };
 
-  async restoreIntegrity(_req, res) {
+  // Dispara: POST /operational/integrity/restore
+  restoreIntegrity = async (_req, res) => {
     const report = await this.operationalService.restoreIntegrityChain();
     res.json(report);
-  }
+  };
 
-  // ===== ALGORITMOS Y BENCHMARK EXPERIMENTAL =====
+  // ===== 9. ALGORITMOS O(n), O(n²), O(n log n) Y BENCHMARK EXPERIMENTAL =====
 
-  async runBenchmarks(req, res) {
+  // Dispara: GET /operational/benchmarks
+  runBenchmarks = async (req, res) => {
     const { searchId, entity = 'orders', sortBy = 'date', maxSize } = req.query;
     const sizes = maxSize
       ? [100, 500, 1000, Math.min(5000, Number(maxSize) || 2500)]
@@ -179,49 +245,57 @@ class OperationalController {
       sizes,
     });
     res.json(result);
-  }
+  };
 
-  // ===== INTELIGENCIA ARTIFICIAL NO LLM (KERAS/TENSORFLOW + SIMPLE STATISTICS) =====
+  // ===== 10. MODELOS DE IA NO LLM (KERAS/TENSORFLOW + SIMPLE STATISTICS) =====
 
-  async getAiStatus(_req, res) {
+  // Dispara: GET /ai/status
+  getAiStatus = async (_req, res) => {
     const status = await this.aiService.getModelsStatus();
     res.json(status);
-  }
+  };
 
-  async trainAiModels(req, res) {
+  // Dispara: POST /ai/train
+  trainAiModels = async (req, res) => {
     const result = await this.aiService.trainModels(req.body || {});
     res.json(result);
-  }
+  };
 
-  async classifyOperation(req, res) {
+  // Dispara: POST /ai/classify
+  classifyOperation = async (req, res) => {
     const result = await this.aiService.classifyOperation(req.body || {});
     res.json(result);
-  }
+  };
 
-  async classifyRecentOperations(req, res) {
+  // Dispara: GET /ai/classify-recent
+  classifyRecentOperations = async (req, res) => {
     const limit = Number(req.query.limit) || 20;
     const result = await this.aiService.classifyRecentOperations(limit);
     res.json(result);
-  }
+  };
 
-  async predictDemand(req, res) {
+  // Dispara: POST /ai/predict-demand
+  predictDemand = async (req, res) => {
     const result = await this.aiService.predictDemandAndAmount(req.body || {});
     res.json(result);
-  }
+  };
 
-  async getUserProfiles(_req, res) {
+  // Dispara: GET /ai/user-profiles
+  getUserProfiles = async (_req, res) => {
     const result = await this.aiService.getUserBehaviorAnomalies();
     res.json(result);
-  }
+  };
 
-  async getOperationalPatterns(_req, res) {
+  // Dispara: GET /ai/patterns
+  getOperationalPatterns = async (_req, res) => {
     const result = await this.aiService.getOperationalPatterns();
     res.json(result);
-  }
+  };
 
-  // ===== RESUMEN EJECUTIVO DEL PANEL =====
+  // ===== 11. RESUMEN CONSOLIDADO DEL SISTEMA =====
 
-  async getExecutiveSummary(_req, res) {
+  // Dispara: GET /operational/summary
+  getExecutiveSummary = async (_req, res) => {
     const [
       users,
       categories,
@@ -266,7 +340,7 @@ class OperationalController {
       suspiciousUsersCount: userProfiles.globalStats.suspiciousUsersCount,
       aiModelsReady: aiStatus.isReady,
     });
-  }
+  };
 }
 
 module.exports = OperationalController;

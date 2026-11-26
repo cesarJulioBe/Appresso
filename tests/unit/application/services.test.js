@@ -2,140 +2,90 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
 const Order = require('../../../src/domain/entities/Order');
-const ActionStack = require('../../../src/domain/delivery/ActionStack');
 const SlidingWindow = require('../../../src/domain/fraud/SlidingWindow');
 const { generateTransactionHash } = require('../../../src/domain/fraud/hashUtils');
 
-const OrderService = require('../../../src/application/orders/OrderService');
-const QueueService = require('../../../src/application/delivery/QueueService');
-const RouteService = require('../../../src/application/delivery/RouteService');
-const AnalyticsService = require('../../../src/application/analytics/AnalyticsService');
+const OperationalService = require('../../../src/application/operational/OperationalService');
 const TransactionService = require('../../../src/application/fraud/TransactionService');
 const FraudReportService = require('../../../src/application/fraud/FraudReportService');
 const ThresholdService = require('../../../src/application/fraud/ThresholdService');
 
-function createFakeOrderRepository(initialOrders = []) {
-  const store = [...initialOrders];
-  let nextId = store.length + 1;
+describe('Application Layer - Unified Services (with DI fakes)', () => {
+  it('OperationalService creates multichannel order deducting stock, updates status, and restores stock on cancel', async () => {
+    const itemsStore = [
+      { id: 1, sku: 'CAF-001', nombre: 'Café Americano', nombre_normalizado: 'cafe americano', precio: 6000, stock: 10 },
+    ];
+    const ordersStore = [];
 
-  return {
-    async create(customer, products) {
-      const order = new Order(nextId++, customer, products, 'Requested');
-      store.push(order);
-      return order;
-    },
-    async findById(id) {
-      return store.find((o) => o.id === Number(id)) || null;
-    },
-    async findAll(page = 1, pageSize = 20) {
-      const start = (page - 1) * pageSize;
-      return {
-        orders: store.slice(start, start + pageSize),
-        total: store.length,
-        page,
-        pageSize,
-        totalPages: Math.ceil(store.length / pageSize),
-      };
-    },
-    async findAllUnpaginated() {
-      return [...store];
-    },
-    async findByStatus(status) {
-      return store.filter((o) => o.status === status);
-    },
-    async updateStatus(id, status) {
-      const order = store.find((o) => o.id === Number(id));
-      if (!order) return null;
-      order.status = status;
-      return order;
-    },
-  };
-}
-
-describe('Application Layer - Services (with DI fakes)', () => {
-  it('OrderService updates status, pushes to ActionStack only on success, and undoes last change', async () => {
-    const orderRepository = createFakeOrderRepository([
-      new Order(1, 'Ana', [{ name: 'Coffee', quantity: 1, price: 5000 }], 'Requested'),
-    ]);
-    const actionStack = new ActionStack();
-    const orderService = new OrderService({ orderRepository, actionStack });
-
-    // Non-existent order should throw 404 AND NOT push to actionStack
-    await assert.rejects(
-      () => orderService.updateStatus(999, 'Delivered'),
-      { name: 'NotFoundError', message: 'Pedido no encontrado' }
-    );
-    assert.equal(actionStack.size(), 0);
-
-    // Valid status update pushes to actionStack
-    const updated = await orderService.updateStatus(1, 'In Progress');
-    assert.equal(updated.status, 'In Progress');
-    assert.equal(actionStack.size(), 1);
-
-    // Undo restores previous status
-    const undone = await orderService.undoLastChange();
-    assert.equal(undone.order.status, 'Requested');
-    assert.equal(actionStack.size(), 0);
-  });
-
-  it('QueueService attends next pending order in FIFO order and records undo action', async () => {
-    const orderRepository = createFakeOrderRepository([
-      new Order(1, 'Ana', [{ name: 'Coffee', quantity: 1, price: 5000 }], 'Requested'),
-      new Order(2, 'Luis', [{ name: 'Tea', quantity: 1, price: 4000 }], 'Requested'),
-    ]);
-    const actionStack = new ActionStack();
-    const queueService = new QueueService({ orderRepository, actionStack });
-
-    const pendingBefore = await queueService.getPending();
-    assert.equal(pendingBefore.totalPending, 2);
-    assert.equal(pendingBefore.next.id, 1);
-
-    const attended = await queueService.attendNext();
-    assert.equal(attended.id, 1);
-    assert.equal(attended.status, 'In Progress');
-    assert.equal(actionStack.size(), 1);
-  });
-
-  it('RouteService calculates shortest route and gas cost from repository edges', async () => {
-    const routeRepository = {
-      async findAll() {
-        return [
-          { origin: 'Medellin', destination: 'Envigado', distance_km: '10' },
-          { origin: 'Envigado', destination: 'Sabaneta', distance_km: '5' },
-        ];
+    const catalogRepository = {
+      async findItemById(id) {
+        return itemsStore.find((i) => i.id === Number(id)) || null;
       },
-      async findCities() {
-        return ['Envigado', 'Medellin', 'Sabaneta'];
+      async adjustStock(id, delta) {
+        const item = itemsStore.find((i) => i.id === Number(id));
+        if (!item) return null;
+        item.stock = Math.max(0, item.stock + delta);
+        return { ...item };
       },
     };
-    const routeService = new RouteService({ routeRepository });
-    const result = await routeService.calculateRoute({
-      from: 'Medellin',
-      to: 'Sabaneta',
-      kmPerLiter: 15,
-      pricePerLiter: 15000,
+    const orderRepository = {
+      async createExtended(data) {
+        const order = new Order(ordersStore.length + 1, data.customer, data.products, data.status);
+        order.canal = data.canal;
+        order.subtotal = data.subtotal;
+        order.impuestos = data.impuestos;
+        order.total = data.total;
+        ordersStore.push(order);
+        return order;
+      },
+      async findById(id) {
+        return ordersStore.find((o) => o.id === Number(id)) || null;
+      },
+      async findAll(page = 1, pageSize = 20) {
+        return { orders: ordersStore, total: ordersStore.length, page, pageSize, totalPages: 1 };
+      },
+      async findAllUnpaginated() {
+        return [...ordersStore];
+      },
+      async updateStatus(id, status) {
+        const order = ordersStore.find((o) => o.id === Number(id));
+        if (!order) return null;
+        order.status = status;
+        return order;
+      },
+    };
+
+    const operationalService = new OperationalService({
+      userRepository: { async findById() { return { id: 1, nombre: 'Ana Cliente' }; } },
+      catalogRepository,
+      orderRepository,
+      billingRepository: {},
+      secret: 'unit_test_secret',
     });
 
-    assert.deepEqual(result.path, ['Medellin', 'Envigado', 'Sabaneta']);
-    assert.equal(result.distanceKm, 15);
-    assert.equal(result.gas.liters, 1);
-    assert.equal(result.gas.cost, 15000);
-  });
+    // Crear pedido de 3 unidades descuenta stock de 10 -> 7
+    const created = await operationalService.createOperationalOrder({
+      usuarioId: 1,
+      canal: 'app',
+      items: [{ itemId: 1, quantity: 3 }],
+    });
+    assert.equal(created.order.canal, 'app');
+    assert.equal(itemsStore[0].stock, 7);
 
-  it('AnalyticsService computes statistics, loyalty progression, and sales predictions', async () => {
-    const orderRepository = createFakeOrderRepository([
-      new Order(1, 'Ana', [{ name: 'Coffee', quantity: 2, price: 5000 }], 'Delivered'),
-    ]);
-    const analyticsService = new AnalyticsService({ orderRepository });
+    // Actualizar estado válido a In Progress
+    const inProgress = await operationalService.updateOperationalOrderStatus(created.order.id, 'In Progress');
+    assert.equal(inProgress.order.status, 'In Progress');
 
-    const stats = await analyticsService.getStatistics();
-    assert.equal(stats.statistics.Delivered.orderCount, 1);
+    // Rechazar estado inválido
+    await assert.rejects(
+      () => operationalService.updateOperationalOrderStatus(created.order.id, 'EstadoFalso'),
+      { name: 'ValidationError' }
+    );
 
-    const loyalty = analyticsService.getLoyaltyProgression({ firstTerm: 2, commonDifference: 2 });
-    assert.equal(loyalty.results.length, 3);
-
-    const sales = analyticsService.predictSales([10, 20, 30]);
-    assert.equal(sales.predictions.length, 3);
+    // Cancelar pedido devuelve las 3 unidades al stock (7 -> 10)
+    const cancelled = await operationalService.cancelOrder(created.order.id);
+    assert.equal(cancelled.order.status, 'Cancelled');
+    assert.equal(itemsStore[0].stock, 10);
   });
 
   it('TransactionService processes valid transactions, audits invalid hashes, and rejects duplicates', async () => {

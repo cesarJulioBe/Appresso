@@ -1,3 +1,24 @@
+/**
+ * @file FraudDetection.jsx
+ * @description Centro de Monitoreo Antifraude Transaccional (Ventana Deslizante + Firma HMAC-SHA256).
+ *
+ * - Vista de la interfaz que representa: Sección "Detección de fraude", integrando:
+ *   1) Dashboard analítico (métricas por periodo, KPIs de usuarios afectados, desglose por estado,
+ *      método de pago y nivel, histograma de anomalías por hora y línea de tiempo reciente).
+ *   2) Simulador en vivo de transacciones para probar ráfagas por usuario.
+ *   3) Editor de umbrales dinámicos (máximo de transacciones y segundos de ventana) por franja horaria.
+ *   4) Historial completo de transacciones y listado exclusivo de anomalías detectadas.
+ * - Desde dónde se monta: Renderizado en `frontend/src/App.jsx` cuando `activeView === 'fraud'`.
+ * - Funciones de `frontend/src/api.js` que consume y rutas HTTP que dispara:
+ *   1. `fetchFraudStats()`      -> `GET /fraud/stats` (en `loadData`)
+ *   2. `fetchAnomalies()`       -> `GET /fraud/anomalies` (en `loadData`)
+ *   3. `fetchTransactions()`    -> `GET /fraud/transactions` (en `loadData`)
+ *   4. `fetchThresholds()`      -> `GET /fraud/thresholds` (en `loadData`)
+ *   5. `fetchFraudDashboard()`  -> `GET /fraud/dashboard` (en `loadData`)
+ *   6. `sendTestTransaction()`  -> `POST /fraud/simulate` (botón "Enviar transacción" -> `handleSend`)
+ *   7. `updateThreshold()`      -> `PUT /fraud/thresholds/:franja` (botón "Guardar" de cada franja -> `handleSaveThreshold`)
+ */
+
 import { useEffect, useState } from 'react';
 import { TextField, Label, Input, Button, Chip } from '@heroui/react';
 import {
@@ -6,19 +27,37 @@ import {
 } from '../api';
 
 function FraudDetection() {
+  // === Estados de datos consultados desde el backend ===
+  // `stats`: resumen global `{ totalTransacciones, totalAnomalias, porcentajeAnomalias }`.
   const [stats, setStats] = useState(null);
+  // `anomalies`: arreglo de transacciones que infringieron reglas de firma HMAC o ventana deslizante.
   const [anomalies, setAnomalies] = useState([]);
+  // `transactions`: historial completo de transacciones evaluadas.
   const [transactions, setTransactions] = useState([]);
+  // `thresholds`: configuración vigente de límites por franja horaria (`madrugada`, `manana`, `tarde`, `noche`).
   const [thresholds, setThresholds] = useState([]);
+  // `editedThresholds`: diccionario temporal con cambios locales aún no guardados en los inputs de umbrales.
   const [editedThresholds, setEditedThresholds] = useState({});
 
+  // === Estados del simulador interactivo de transacciones ===
+  // `user`: correo electrónico del usuario simulado.
   const [user, setUser] = useState('test@test.com');
+  // `value`: monto de la transacción en pesos colombianos.
   const [value, setValue] = useState('50000');
+  // `loading`: bloquea el botón de envío mientras responde `POST /fraud/simulate`.
   const [loading, setLoading] = useState(false);
+  // `lastResult`: dictamen inmediato devuelto por el motor antifraude para la última transacción simulada.
   const [lastResult, setLastResult] = useState(null);
+  // `dashboard`: métricas agregadas por periodos, métodos de pago, niveles, horas y línea de tiempo.
   const [dashboard, setDashboard] = useState(null);
+  // `paymentMethod`: medio de pago elegido en el simulador (`Tarjeta`, `Efectivo` o `Transferencia`).
   const [paymentMethod, setPaymentMethod] = useState('Tarjeta');
 
+  /**
+   * Función `loadData`:
+   * Ejecuta en paralelo (`Promise.all`) las 5 consultas de lectura del módulo antifraude
+   * para refrescar todas las métricas, tablas y gráficas en una sola tanda de red.
+   */
   async function loadData() {
     try {
       const [statsData, anomaliesData, transactionsData, thresholdsData, dashboardData] = await Promise.all([
@@ -38,10 +77,16 @@ function FraudDetection() {
     }
   }
 
+  // Efecto inicial: carga todos los indicadores antifraude al montar el componente.
   useEffect(() => {
     loadData();
   }, []);
 
+  /**
+   * Manejador `handleSend` (botón "Enviar transacción"):
+   * Dispara `POST /fraud/simulate` enviando usuario, monto y método de pago; guarda el dictamen
+   * en `lastResult` y recarga `loadData()` para reflejar el nuevo evento en gráficas e historiales.
+   */
   async function handleSend() {
     if (!user || !value) return;
     setLoading(true);
@@ -56,10 +101,16 @@ function FraudDetection() {
     }
   }
 
+  /**
+   * Obtiene el valor editado localmente para un campo de umbral o, si no ha sido tocado, el valor original de BD.
+   */
   function getEditedValue(franja, field, original) {
     return editedThresholds[franja]?.[field] ?? original;
   }
 
+  /**
+   * Registra en `editedThresholds` el cambio de un input de configuración sin mutar las demás franjas.
+   */
   function updateEditedValue(franja, field, value) {
     setEditedThresholds(prev => ({
       ...prev,
@@ -67,6 +118,10 @@ function FraudDetection() {
     }));
   }
 
+  /**
+   * Manejador `handleSaveThreshold` (botón "Guardar" de una fila de franja horaria):
+   * Dispara `PUT /fraud/thresholds/:franja` con el nuevo umbral y ventana en segundos, y refresca los datos.
+   */
   async function handleSaveThreshold(row) {
     const umbral = parseInt(getEditedValue(row.franja, 'umbral_transacciones', row.umbral_transacciones));
     const ventana = parseInt(getEditedValue(row.franja, 'ventana_segundos', row.ventana_segundos));
@@ -85,6 +140,7 @@ function FraudDetection() {
         Ventana deslizante por usuario + validación de hash (HMAC-SHA256)
       </p>
 
+      {/* Bloque 1: Dashboard ejecutivo de monitoreo (periodos, KPIs, distribuciones, barras por hora y timeline) */}
       {dashboard && (
         <div className="mb-5 flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-3">
@@ -137,6 +193,7 @@ function FraudDetection() {
               ))}
             </div>
           </div>
+          {/* Histograma visual de barras proporcionales para anomalías por hora (00:00 a 23:00) */}
           <div>
             <p className="text-sm font-medium mb-2">Actividad por hora</p>
             <div className="flex items-end gap-1 h-20 border-b border-neutral-200">
@@ -151,6 +208,7 @@ function FraudDetection() {
             </div>
             <div className="flex justify-between text-[10px] text-neutral-400 mt-1"><span>00:00</span><span>12:00</span><span>23:00</span></div>
           </div>
+          {/* Línea de tiempo cronológica de eventos sospechosos recientes */}
           <div>
             <p className="text-sm font-medium mb-2">Línea de tiempo de anomalías</p>
             <div className="flex flex-col gap-1 max-h-36 overflow-y-auto">
@@ -166,6 +224,7 @@ function FraudDetection() {
         </div>
       )}
 
+      {/* Bloque 2: Contadores globales acumulados (total de transacciones, anomalías y tasa porcentual) */}
       {stats && (
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="border border-neutral-200 rounded-md p-3">
@@ -183,7 +242,7 @@ function FraudDetection() {
         </div>
       )}
 
-      {/* Simular transacción */}
+      {/* Bloque 3: Simulador de transacción en vivo -> dispara `POST /fraud/simulate` */}
       <div className="border border-neutral-200 rounded-md p-3 mb-4">
         <p className="text-sm font-medium mb-2">Simular transacción (envía 3 veces seguidas para forzar anomalía)</p>
         <div className="grid grid-cols-3 gap-2 mb-2">
@@ -224,7 +283,7 @@ function FraudDetection() {
         )}
       </div>
 
-      {/* Configuración de umbrales por franja horaria */}
+      {/* Bloque 4: Configuración editable de umbrales por franja horaria -> dispara `PUT /fraud/thresholds/:franja` */}
       <div className="border border-neutral-200 rounded-md p-3 mb-4">
         <p className="text-sm font-medium mb-2">Configuración de umbrales por franja horaria</p>
         <div className="flex flex-col gap-2">
@@ -253,7 +312,7 @@ function FraudDetection() {
         </div>
       </div>
 
-      {/* Historial completo de transacciones */}
+      {/* Bloque 5: Historial completo de transacciones evaluadas (más recientes primero) */}
       <p className="text-sm font-medium mb-2">Historial de transacciones</p>
       <div className="flex flex-col gap-1 max-h-56 overflow-y-auto mb-4">
         {transactions.length === 0 && <p className="text-sm text-neutral-500">Sin transacciones todavía</p>}
@@ -267,7 +326,7 @@ function FraudDetection() {
         ))}
       </div>
 
-      {/* Solo anomalías */}
+      {/* Bloque 6: Lista filtrada exclusivamente de anomalías detectadas */}
       <p className="text-sm font-medium mb-2">Anomalías recientes</p>
       <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
         {anomalies.length === 0 && <p className="text-sm text-neutral-500">Sin anomalías registradas</p>}

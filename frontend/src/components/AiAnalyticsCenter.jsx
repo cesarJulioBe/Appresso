@@ -1,3 +1,29 @@
+/**
+ * @file AiAnalyticsCenter.jsx
+ * @description Centro de Analítica e Inteligencia Artificial No-LLM (Keras / TensorFlow.js + Simple Statistics).
+ *
+ * - Vista de la interfaz que representa: Sección "Modelos de IA (Keras/TF + Simple Stats)", compuesta por:
+ *   1) Estado y métricas de entrenamiento de las redes neuronales Keras (arquitectura, Data Augmentation,
+ *      accuracy/loss y persistencia en disco `model.json + weights.bin`), simulador en vivo de clasificación
+ *      Normal vs Fraudulenta y tabla de operaciones recientes evaluadas automáticamente.
+ *   2) Perfiles estadísticos por usuario calculados con `simple-statistics` (cuartiles Q1/Q2/Q3, rango
+ *      intercuartílico IQR, Z-score, valla de valores atípicos y clasificación de anomalía).
+ *   3) Predictor híbrido de demanda y monto esperado (Regresión Lineal `ss.linearRegression` + Regresor Neuronal Keras).
+ *   4) Descubrimiento de patrones operativos (hora pico, hora con más anomalías, canales y medios de pago).
+ * - Desde dónde se monta: Renderizado en `frontend/src/App.jsx` cuando `activeView === 'ai_center'`.
+ * - Funciones de `frontend/src/api.js` que consume y rutas HTTP que dispara:
+ *   - Carga inicial en paralelo (`loadAllAiData`):
+ *     1. `fetchAiStatus()`                     -> `GET /ai/status`
+ *     2. `fetchRecentClassifiedOperations(12)` -> `GET /ai/classify-recent?limit=12`
+ *     3. `fetchUserBehaviorProfiles()`         -> `GET /ai/user-profiles`
+ *     4. `fetchOperationalPatterns()`          -> `GET /ai/patterns`
+ *     5. `predictDemandAndAmount(...)`         -> `POST /ai/predict-demand`
+ *   - Acciones interactivas del usuario:
+ *     6. `trainAiModels(...)`                  -> `POST /ai/train` (botón "Reentrenar y Guardar Modelos en Disco")
+ *     7. `classifySingleOperation(payload)`    -> `POST /ai/classify` (botones de casos rápidos y botón "Clasificar Operación")
+ *     8. `predictDemandAndAmount(payload)`     -> `POST /ai/predict-demand` (form "Calcular Predicción de Demanda")
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import {
   fetchAiStatus,
@@ -10,14 +36,23 @@ import {
 } from '../api';
 
 export default function AiAnalyticsCenter() {
+  // === Estados de resultados provenientes de los endpoints `/ai/*` ===
+  // `aiStatus`: metadatos de arquitectura, épocas, precisión, pérdida y rutas guardadas de los modelos Keras.
   const [aiStatus, setAiStatus] = useState(null);
+  // `recentOps`: últimas operaciones reales del sistema clasificadas automáticamente como Normal o Fraudulenta.
   const [recentOps, setRecentOps] = useState(null);
+  // `userProfiles`: estadísticas descriptivas (Q1, Q2, Q3, IQR, Z-score y alertas) por cada usuario.
   const [userProfiles, setUserProfiles] = useState(null);
+  // `patterns`: hallazgos agregados de horarios pico, concentración de anomalías, canales y métodos de pago.
   const [patterns, setPatterns] = useState(null);
+  // `demandResult`: pronóstico combinado de Regresión Lineal (`simple-statistics`) y Regresión Neuronal (`Keras`).
   const [demandResult, setDemandResult] = useState(null);
+  // `classifierResult`: salida de inferencia para una operación puntual (probabilidad de fraude, nivel de riesgo y tensor normalizado).
   const [classifierResult, setClassifierResult] = useState(null);
+  // `training`: booleano que indica cuando el backend está reentrenando las redes con Data Augmentation.
   const [training, setTraining] = useState(false);
 
+  // Estado `opInput`: vector de 8 características de entrada para probar el clasificador neuronal en vivo.
   const [opInput, setOpInput] = useState({
     monto: 24500,
     hora: 14,
@@ -29,6 +64,7 @@ export default function AiAnalyticsCenter() {
     canal: 'presencial',
   });
 
+  // Estado `demandInput`: parámetros del formulario de predicción de demanda y monto esperado.
   const [demandInput, setDemandInput] = useState({
     dailySeriesText: '18, 22, 25, 24, 29, 33, 37',
     horizonDays: 7,
@@ -38,6 +74,12 @@ export default function AiAnalyticsCenter() {
     porcentajeDescuento: 10,
   });
 
+  /**
+   * Callback `loadAllAiData`:
+   * Ejecuta en paralelo (`Promise.all`) las 5 consultas iniciales del centro de IA para poblar
+   * de inmediato las tarjetas de estado Keras, operaciones evaluadas, cuartiles por usuario,
+   * patrones horarios y una predicción base de demanda.
+   */
   const loadAllAiData = useCallback(async () => {
     try {
       const [status, recent, profiles, pat, demand] = await Promise.all([
@@ -64,10 +106,16 @@ export default function AiAnalyticsCenter() {
     }
   }, []);
 
+  // Efecto inicial: carga todos los paneles del centro de IA al montar la vista.
   useEffect(() => {
     loadAllAiData();
   }, [loadAllAiData]);
 
+  /**
+   * Manejador `handleTrainModels` (botón "Reentrenar y Guardar Modelos en Disco"):
+   * Dispara `POST /ai/train` con `{ epochs: 40, augmentationFactor: 2 }`, actualiza las métricas
+   * del modelo entrenado y vuelve a evaluar las 12 operaciones recientes con los nuevos pesos.
+   */
   const handleTrainModels = async () => {
     setTraining(true);
     try {
@@ -80,6 +128,11 @@ export default function AiAnalyticsCenter() {
     }
   };
 
+  /**
+   * Manejador `handleClassify` (botones de escenarios predefinidos y botón "Clasificar Operación"):
+   * Si recibe un `customPayload` (escenario rápido), sincroniza el formulario `opInput`; luego dispara
+   * `POST /ai/classify` y guarda la predicción neuronal en `classifierResult`.
+   */
   const handleClassify = async (customPayload = null) => {
     const payload = customPayload || opInput;
     if (customPayload) setOpInput(customPayload);
@@ -87,6 +140,11 @@ export default function AiAnalyticsCenter() {
     setClassifierResult(res);
   };
 
+  /**
+   * Manejador `handlePredictDemand` (`onSubmit` del formulario en Sección 3):
+   * Convierte la cadena de texto separada por comas en un arreglo numérico limpio y dispara
+   * `POST /ai/predict-demand` para obtener la regresión lineal y la regresión neuronal Keras.
+   */
   const handlePredictDemand = async (e) => {
     e.preventDefault();
     const dailySeries = demandInput.dailySeriesText
@@ -118,6 +176,7 @@ export default function AiAnalyticsCenter() {
               Incluye normalización Min-Max con tensores, aumento de datos (Data Augmentation) y persistencia en disco (<code className="font-mono">model.json + weights.bin</code>).
             </p>
           </div>
+            {/* Botón onClick -> dispara `handleTrainModels` (`POST /ai/train`) */}
           <button
             type="button"
             disabled={training}
@@ -597,6 +656,7 @@ export default function AiAnalyticsCenter() {
             </p>
           </div>
 
+          {/* Formulario onSubmit -> dispara `handlePredictDemand` (`POST /ai/predict-demand`) */}
           <form onSubmit={handlePredictDemand} className="grid grid-cols-2 gap-3 text-xs">
             <div className="col-span-2">
               <label className="block text-neutral-700 font-medium mb-1">

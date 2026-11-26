@@ -1,25 +1,39 @@
+/**
+ * ============================================================================
+ * ARCHIVO: frontend/src/components/RoutePlanner.jsx
+ * CAPA: Componente Visual React — Planificador de Rutas (Grafo + Dijkstra)
+ * ============================================================================
+ * RESPONSABILIDAD ÚNICA:
+ *   Permitir al operador administrar las conexiones terrestres entre ciudades
+ *   (`POST /delivery/routes`, `DELETE /delivery/routes/:id`) y calcular el
+ *   trayecto más corto y económico de entrega usando el Algoritmo de Dijkstra
+ *   junto con la estimación de litros y costo de gasolina (`GET /delivery/route`).
+ * ============================================================================
+ */
+
 import { useEffect, useState } from 'react';
 import { TextField, Label, Input, Button } from '@heroui/react';
 import { fetchCities, fetchRoute, fetchRoutes, createRoute, deleteRoute } from '../api';
 
 function RoutePlanner() {
-  // Sección: calcular ruta
-  const [cities, setCities] = useState([]);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [kmPerLiter, setKmPerLiter] = useState('15');
-  const [pricePerLiter, setPricePerLiter] = useState('10500');
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
+  // === Estados de la calculadora de ruta óptima (Dijkstra) ===
+  const [cities, setCities] = useState([]);                 // Lista de ciudades registradas en el grafo
+  const [from, setFrom] = useState('');                     // Ciudad de origen escrita por el usuario
+  const [to, setTo] = useState('');                         // Ciudad de destino escrita por el usuario
+  const [kmPerLiter, setKmPerLiter] = useState('15');       // Rendimiento del vehículo (km por litro)
+  const [pricePerLiter, setPricePerLiter] = useState('10500'); // Precio de gasolina por litro en COP
+  const [result, setResult] = useState(null);               // Respuesta `{ path, distanceKm, gas }`
+  const [error, setError] = useState(null);                 // Mensaje de error si no hay camino entre ciudades
+  const [loading, setLoading] = useState(false);            // Indicador de carga mientras responde el backend
 
-  // Sección: administrar rutas guardadas
-  const [routes, setRoutes] = useState([]);
-  const [newOrigin, setNewOrigin] = useState('');
-  const [newDestination, setNewDestination] = useState('');
-  const [newDistance, setNewDistance] = useState('');
-  const [savingRoute, setSavingRoute] = useState(false);
+  // === Estados para crear y listar tramos guardados ===
+  const [routes, setRoutes] = useState([]);                 // Tramos existentes en la tabla `routes`
+  const [newOrigin, setNewOrigin] = useState('');           // Origen del nuevo tramo
+  const [newDestination, setNewDestination] = useState(''); // Destino del nuevo tramo
+  const [newDistance, setNewDistance] = useState('');       // Distancia en kilómetros del nuevo tramo
+  const [savingRoute, setSavingRoute] = useState(false);    // Bloquea el botón mientras se guarda en BD
 
+  // Carga en paralelo (`Promise.all`) el catálogo de ciudades y las conexiones actuales
   async function loadCitiesAndRoutes() {
     try {
       const [citiesData, routesData] = await Promise.all([fetchCities(), fetchRoutes()]);
@@ -30,10 +44,12 @@ function RoutePlanner() {
     }
   }
 
+  // Se ejecuta automáticamente una vez al abrir la sección "Rutas"
   useEffect(() => {
     loadCitiesAndRoutes();
   }, []);
 
+  // Dispara `GET /delivery/route` para ejecutar el algoritmo de Dijkstra en el backend
   async function handleCalculate() {
     if (!from || !to) return;
     setLoading(true);
@@ -41,7 +57,7 @@ function RoutePlanner() {
     try {
       const data = await fetchRoute(from, to, kmPerLiter, pricePerLiter);
       setResult(data);
-    } catch (err) {
+    } catch {
       setError('No existe ruta entre esas ciudades');
       setResult(null);
     } finally {
@@ -49,6 +65,7 @@ function RoutePlanner() {
     }
   }
 
+  // Dispara `POST /delivery/routes` para guardar un nuevo tramo bidireccional en PostgreSQL
   async function handleCreateRoute() {
     if (!newOrigin || !newDestination || !newDistance) return;
     setSavingRoute(true);
@@ -65,6 +82,7 @@ function RoutePlanner() {
     }
   }
 
+  // Dispara `DELETE /delivery/routes/:id` para borrar una arista del mapa de entregas
   async function handleDeleteRoute(id) {
     try {
       await deleteRoute(id);
@@ -77,10 +95,13 @@ function RoutePlanner() {
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
       <div className="flex flex-col gap-6">
+        {/* Tarjeta 1: Calculadora de camino mínimo con Dijkstra */}
         <div className="bg-white border border-neutral-200 rounded-lg p-5 md:p-6">
           <div className="mb-5">
             <h3 className="text-lg font-semibold">Calcular ruta más corta</h3>
-            <p className="text-sm text-neutral-500">Usa Dijkstra para encontrar el trayecto y estimar el costo de gasolina.</p>
+            <p className="text-sm text-neutral-500">
+              Usa Dijkstra para encontrar el trayecto óptimo y estimar el costo de gasolina.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -115,6 +136,7 @@ function RoutePlanner() {
 
           {error && <p className="text-sm text-red-700 bg-red-50 rounded p-3 mt-3">{error}</p>}
 
+          {/* Desglose del resultado: secuencia de ciudades, kilómetros, litros y costo */}
           {result && (
             <div className="mt-5 border border-neutral-200 rounded-md p-4">
               <p className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Ruta encontrada</p>
@@ -137,10 +159,13 @@ function RoutePlanner() {
           )}
         </div>
 
+        {/* Tarjeta 2: Formulario para agregar un nuevo tramo al grafo */}
         <div className="bg-white border border-neutral-200 rounded-lg p-5 md:p-6">
           <div className="mb-4">
             <h3 className="text-lg font-semibold">Agregar nueva ruta</h3>
-            <p className="text-sm text-neutral-500">Añade conexiones para mantener actualizado el mapa de entregas.</p>
+            <p className="text-sm text-neutral-500">
+              Añade conexiones para mantener actualizado el mapa de entregas.
+            </p>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3 mb-4">
             <TextField value={newOrigin} onChange={setNewOrigin}>
@@ -162,6 +187,7 @@ function RoutePlanner() {
         </div>
       </div>
 
+      {/* Columna lateral: Listado de todas las rutas guardadas en PostgreSQL */}
       <aside className="bg-white border border-neutral-200 rounded-lg p-5 md:p-6 h-fit">
         <div className="mb-4">
           <h3 className="text-lg font-semibold">Rutas guardadas</h3>
@@ -170,12 +196,18 @@ function RoutePlanner() {
         {routes.length > 0 ? (
           <div className="flex flex-col gap-2 max-h-[520px] overflow-y-auto pr-1">
             {routes.map((route) => (
-              <div key={route.id} className="flex items-center justify-between gap-3 border border-neutral-100 rounded-md px-3 py-2">
+              <div
+                key={route.id}
+                className="flex items-center justify-between gap-3 border border-neutral-100 rounded-md px-3 py-2"
+              >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{route.origin} → {route.destination}</p>
+                  <p className="text-sm font-medium truncate">
+                    {route.origin} → {route.destination}
+                  </p>
                   <p className="text-xs text-neutral-500">{route.distance_km} km</p>
                 </div>
                 <button
+                  type="button"
                   onClick={() => handleDeleteRoute(route.id)}
                   className="text-red-500 hover:text-red-700 text-xs px-2 shrink-0"
                 >

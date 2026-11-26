@@ -1,3 +1,34 @@
+/**
+ * @file OperationalERP.jsx
+ * @description Módulo central ERP Operativo Multicanal de Appresso (POS, Stock, Facturación Hash-Chain, Pagos, Catálogo y Usuarios).
+ *
+ * - Vista de la interfaz que representa: Sección principal "Módulos Operativos" dividida en 4 sub-pestañas:
+ *   1) Pedidos Multicanal & Stock en tiempo real.
+ *   2) Facturación consecutiva con IVA + Pagos con verificación criptográfica de comprobantes (HMAC-SHA256).
+ *   3) Gestión de Categorías (con unificación canónica) e Ítems de inventario (con limpieza de precios).
+ *   4) Directorio y registro de Usuarios con roles (`cliente`, `empleado`, `admin`).
+ * - Desde dónde se monta: Renderizado por defecto en `frontend/src/App.jsx` cuando `activeView === 'erp'`,
+ *   recibiendo la prop `onDataChanged={refresh}` para sincronizar los pedidos y estadísticas globales.
+ * - Funciones de `frontend/src/api.js` que consume y rutas HTTP que dispara:
+ *   - Carga inicial y refresco (`loadAll`):
+ *     1. `fetchOperationalUsers()` -> `GET /operational/users`
+ *     2. `fetchCategories()`       -> `GET /operational/categories`
+ *     3. `fetchCatalogItems()`     -> `GET /operational/items`
+ *     4. `fetchInvoices()`         -> `GET /operational/invoices`
+ *     5. `fetchPayments()`         -> `GET /operational/payments`
+ *   - Formularios y botones de acción:
+ *     6. `createMultichannelOrder(payload)` -> `POST /operational/orders` (form "Nuevo Pedido Multicanal")
+ *     7. `generateInvoice(payload)`         -> `POST /operational/invoices` (form "Emitir Factura")
+ *     8. `cancelInvoice(id, reason)`        -> `POST /operational/invoices/:id/cancel` (botón "Anular" en tabla de facturas)
+ *     9. `processPayment(payload)`          -> `POST /operational/payments` (form "Procesar Pago y Adjuntar Comprobante")
+ *     10. `createCategory(catForm)`         -> `POST /operational/categories` (form "Gestión de Categorías")
+ *     11. `deleteCategory(id)`              -> `DELETE /operational/categories/:id` (botón "Eliminar" categoría)
+ *     12. `createCatalogItem(payload)`      -> `POST /operational/items` (form "Crear Ítem / Producto")
+ *     13. `deleteCatalogItem(id)`           -> `DELETE /operational/items/:id` (botón "Eliminar" ítem)
+ *     14. `createOperationalUser(userForm)` -> `POST /operational/users` (form "Registrar Usuario con Rol")
+ *     15. `deleteOperationalUser(id)`       -> `DELETE /operational/users/:id` (botón "Eliminar" usuario)
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import {
   fetchOperationalUsers,
@@ -9,7 +40,10 @@ import {
   fetchCatalogItems,
   createCatalogItem,
   deleteCatalogItem,
+  fetchOperationalOrders,
   createMultichannelOrder,
+  updateOperationalOrderStatus,
+  cancelOperationalOrder,
   fetchInvoices,
   generateInvoice,
   cancelInvoice,
@@ -18,15 +52,28 @@ import {
 } from '../api';
 
 export default function OperationalERP({ onDataChanged }) {
+  // Estado `subTab`: controla cuál de las 4 sub-pestañas internas del ERP se muestra (`pos`, `billing`, `catalog`, `users`).
   const [subTab, setSubTab] = useState('pos');
-  const [users, setUsers] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [items, setItems] = useState([]);
-  const [invoices, setInvoices] = useState([]);
-  const [payments, setPayments] = useState([]);
+
+  // Estados de colecciones sincronizadas con PostgreSQL mediante `loadAll()`
+  const [users, setUsers] = useState([]);           // Lista de usuarios con rol (`cliente`, `empleado`, `admin`)
+  const [categories, setCategories] = useState([]); // Categorías normalizadas del catálogo
+  const [items, setItems] = useState([]);           // Productos con precio limpio, SKU y stock disponible
+  const [ordersData, setOrdersData] = useState({    // Listado paginado y resumen de pedidos multicanal
+    orders: [],
+    total: 0,
+    page: 1,
+    pageSize: 10,
+    totalPages: 1,
+    statusSummary: null,
+  });
+  const [invoices, setInvoices] = useState([]);     // Facturas emitidas con consecutivo y hash encadenado
+  const [payments, setPayments] = useState([]);     // Pagos registrados con estado de validez del comprobante
+
+  // Estado `feedback`: banner superior de notificación (`{ type: 'success'|'warning'|'error', title, details }`).
   const [feedback, setFeedback] = useState(null);
 
-  // Formulario de Pedido Multicanal
+  // Estado `orderForm`: campos controlados del formulario de Pedido Multicanal (cliente, cajero, canal, descuento, líneas de ítems).
   const [orderForm, setOrderForm] = useState({
     usuarioId: '',
     empleadoId: '',
@@ -36,7 +83,7 @@ export default function OperationalERP({ onDataChanged }) {
     lines: [{ itemId: '', quantity: 1 }],
   });
 
-  // Formulario de Factura
+  // Estado `invoiceForm`: campos controlados para emitir una factura directa con cálculo de descuento e IVA.
   const [invoiceForm, setInvoiceForm] = useState({
     pedidoId: '',
     usuarioId: '',
@@ -46,7 +93,7 @@ export default function OperationalERP({ onDataChanged }) {
     porcentajeImpuesto: 19,
   });
 
-  // Formulario de Pago con Comprobante
+  // Estado `paymentForm`: datos del pago y metadatos del soporte/comprobante bancario para validación antifraude.
   const [paymentForm, setPaymentForm] = useState({
     facturaId: '',
     monto: '',
@@ -56,7 +103,7 @@ export default function OperationalERP({ onDataChanged }) {
     archivoComprobante: 'soporte_pago_digital.pdf',
   });
 
-  // Formulario de Ítem y Categoría
+  // Estados `catForm` e `itemForm`: formularios de creación de categorías e ítems de inventario en la pestaña 3.
   const [catForm, setCatForm] = useState({ nombre: '', descripcion: '' });
   const [itemForm, setItemForm] = useState({
     nombre: '',
@@ -66,7 +113,7 @@ export default function OperationalERP({ onDataChanged }) {
     sku: '',
   });
 
-  // Formulario de Usuario con Rol
+  // Estado `userForm`: formulario de alta de usuarios con rol y documento en la pestaña 4.
   const [userForm, setUserForm] = useState({
     nombre: '',
     email: '',
@@ -75,18 +122,26 @@ export default function OperationalERP({ onDataChanged }) {
     telefono: '',
   });
 
-  const loadAll = useCallback(async () => {
+  /**
+   * Callback `loadAll`:
+   * Consulta en paralelo (`Promise.all`) los 5 catálogos maestros y transaccionales del ERP
+   * (`GET /operational/users`, `/categories`, `/items`, `/invoices`, `/payments`) para mantener
+   * selectores, tablas e inventario sincronizados tras cualquier operación.
+   */
+  const loadAll = useCallback(async (pageToLoad = 1) => {
     try {
-      const [uRes, cRes, iRes, invRes, payRes] = await Promise.all([
+      const [uRes, cRes, iRes, oRes, invRes, payRes] = await Promise.all([
         fetchOperationalUsers(),
         fetchCategories(),
         fetchCatalogItems(),
+        fetchOperationalOrders(pageToLoad, 10),
         fetchInvoices(),
         fetchPayments(),
       ]);
       setUsers(uRes.users || []);
       setCategories(cRes.categories || []);
       setItems(iRes.items || []);
+      setOrdersData(oRes || { orders: [], total: 0, page: 1, pageSize: 10, totalPages: 1 });
       setInvoices(invRes.invoices || []);
       setPayments(payRes.payments || []);
     } catch (err) {
@@ -94,10 +149,16 @@ export default function OperationalERP({ onDataChanged }) {
     }
   }, []);
 
+  // Efecto de montaje: dispara `loadAll()` automáticamente al entrar a "Módulos Operativos".
   useEffect(() => {
     loadAll();
   }, [loadAll]);
 
+  /**
+   * Función auxiliar `notify`:
+   * Muestra un mensaje enriquecido en `feedback`, recarga las tablas locales con `loadAll()`
+   * e invoca `onDataChanged()` (`refresh` de `App.jsx`) para actualizar el estado global.
+   */
   const notify = (type, title, details = []) => {
     setFeedback({ type, title, details: Array.isArray(details) ? details : [details] });
     loadAll();
@@ -105,6 +166,10 @@ export default function OperationalERP({ onDataChanged }) {
   };
 
   // ===== HANDLERS PEDIDOS MULTICANAL =====
+
+  /**
+   * Agrega una nueva línea de producto al formulario de pedido multicanal (`orderForm.lines`).
+   */
   const handleAddOrderLine = () => {
     setOrderForm((prev) => ({
       ...prev,
@@ -112,6 +177,9 @@ export default function OperationalERP({ onDataChanged }) {
     }));
   };
 
+  /**
+   * Actualiza de manera inmutable el producto (`itemId`) o cantidad (`quantity`) de la línea `idx`.
+   */
   const handleUpdateOrderLine = (idx, field, val) => {
     setOrderForm((prev) => {
       const lines = [...prev.lines];
@@ -120,6 +188,11 @@ export default function OperationalERP({ onDataChanged }) {
     });
   };
 
+  /**
+   * Manejador `handleCreateMultichannelOrder` (`onSubmit` del formulario Pestaña 1):
+   * Dispara `POST /operational/orders` para registrar el pedido, descontar unidades del stock en BD
+   * y emitir opcionalmente la factura consecutiva con IVA y hash encadenado.
+   */
   const handleCreateMultichannelOrder = async (e) => {
     e.preventDefault();
     try {
@@ -158,7 +231,70 @@ export default function OperationalERP({ onDataChanged }) {
     }
   };
 
+  /**
+   * Manejador `handleOrderStatusChange`:
+   * Dispara `PATCH /operational/orders/:id/status` para avanzar el estado de un pedido
+   * (`Requested` -> `In Progress` -> `Delivered`).
+   */
+  const handleOrderStatusChange = async (orderId, newStatus) => {
+    try {
+      await updateOperationalOrderStatus(orderId, newStatus);
+      notify('success', `Pedido #${orderId} actualizado a estado '${newStatus}'`);
+    } catch (err) {
+      notify('error', 'Error al cambiar estado del pedido', [err.message]);
+    }
+  };
+
+  /**
+   * Manejador `handleCancelOperationalOrder`:
+   * Dispara `POST /operational/orders/:id/cancel` para anular el pedido y devolver el stock al inventario.
+   */
+  const handleCancelOperationalOrder = async (orderId) => {
+    try {
+      const res = await cancelOperationalOrder(orderId);
+      const restoredMsgs = (res.restoredStock || []).map(
+        (r) => `Stock restaurado en '${r.nombre}': +${r.restored} uds (Nuevo stock: ${r.newStock})`
+      );
+      notify(
+        'warning',
+        `Pedido #${orderId} anulado y stock reintegrado`,
+        restoredMsgs.length ? restoredMsgs : ['Estado cambiado a Cancelled']
+      );
+    } catch (err) {
+      notify('error', 'Error al anular pedido', [err.message]);
+    }
+  };
+
+  /**
+   * Manejador `handleQuickInvoiceFromOrder`:
+   * Emite la factura encadenada directamente a partir de un pedido existente (`POST /operational/invoices`).
+   */
+  const handleQuickInvoiceFromOrder = async (order) => {
+    try {
+      const res = await generateInvoice({
+        pedidoId: order.id,
+        usuarioId: order.usuarioId || undefined,
+        canal: order.canal || 'presencial',
+        subtotal: Number(order.subtotal || order.total || 10000),
+        porcentajeDescuento: 0,
+      });
+      notify(
+        'success',
+        `Factura ${res.invoice.numero_consecutivo} emitida para el Pedido #${order.id}`,
+        [`Total con IVA: $${Number(res.invoice.total).toLocaleString()} | Hash: ${res.invoice.hash_actual.slice(0, 18)}...`]
+      );
+    } catch (err) {
+      notify('error', 'Error al facturar pedido', [err.message]);
+    }
+  };
+
   // ===== HANDLERS FACTURACIÓN =====
+
+  /**
+   * Manejador `handleGenerateInvoice` (`onSubmit` del formulario de facturación en Pestaña 2):
+   * Dispara `POST /operational/invoices`, calcula impuestos, encadena el hash con la factura previa
+   * y adjunta la evaluación de riesgo del clasificador neuronal Keras.
+   */
   const handleGenerateInvoice = async (e) => {
     e.preventDefault();
     try {
@@ -187,6 +323,11 @@ export default function OperationalERP({ onDataChanged }) {
     }
   };
 
+  /**
+   * Manejador `handleCancelInvoice` (`onClick` del botón "Anular" en la tabla de facturas):
+   * Dispara `POST /operational/invoices/:id/cancel`, actualizando el estado a Anulada y alertando
+   * si el usuario supera tasas sospechosas de anulación.
+   */
   const handleCancelInvoice = async (inv) => {
     try {
       const res = await cancelInvoice(inv.id, 'Anulación solicitada desde panel operativo');
@@ -201,6 +342,12 @@ export default function OperationalERP({ onDataChanged }) {
   };
 
   // ===== HANDLERS PAGOS =====
+
+  /**
+   * Manejador `handleProcessPayment` (`onSubmit` del formulario de pagos en Pestaña 2):
+   * Dispara `POST /operational/payments` para validar que el comprobante no esté reutilizado,
+   * coincida en monto con la factura, firme su hash encadenado y pase por el clasificador Keras.
+   */
   const handleProcessPayment = async (e) => {
     e.preventDefault();
     try {
@@ -250,6 +397,11 @@ export default function OperationalERP({ onDataChanged }) {
   };
 
   // ===== HANDLERS CATÁLOGO Y USUARIOS =====
+
+  /**
+   * Manejador `handleCreateCategory` (`onSubmit` en Pestaña 3):
+   * Dispara `POST /operational/categories` aplicando normalización canónica para evitar categorías duplicadas.
+   */
   const handleCreateCategory = async (e) => {
     e.preventDefault();
     try {
@@ -265,6 +417,10 @@ export default function OperationalERP({ onDataChanged }) {
     }
   };
 
+  /**
+   * Manejador `handleCreateItem` (`onSubmit` en Pestaña 3):
+   * Dispara `POST /operational/items` limpiando formatos sucios de moneda (ej. "$ 12.500,00" -> `12500`).
+   */
   const handleCreateItem = async (e) => {
     e.preventDefault();
     try {
@@ -283,6 +439,10 @@ export default function OperationalERP({ onDataChanged }) {
     }
   };
 
+  /**
+   * Manejador `handleCreateUser` (`onSubmit` en Pestaña 4):
+   * Dispara `POST /operational/users` normalizando correo/nombre y validando unicidad por email y documento.
+   */
   const handleCreateUser = async (e) => {
     e.preventDefault();
     try {
@@ -298,6 +458,7 @@ export default function OperationalERP({ onDataChanged }) {
     }
   };
 
+  // Definición declarativa de las 4 sub-pestañas internas del ERP Operativo
   const subTabs = [
     { id: 'pos', label: '1. Pedidos Multicanal & Stock' },
     { id: 'billing', label: '2. Facturación & Pagos (Hash Chain)' },
@@ -359,6 +520,7 @@ export default function OperationalERP({ onDataChanged }) {
       {/* PESTAÑA 1: PEDIDOS MULTICANAL E INVENTARIO */}
       {subTab === 'pos' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[420px_1fr]">
+          {/* Formulario onSubmit -> dispara `handleCreateMultichannelOrder` (`POST /operational/orders`) */}
           <form
             onSubmit={handleCreateMultichannelOrder}
             className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm flex flex-col gap-4"
@@ -549,6 +711,149 @@ export default function OperationalERP({ onDataChanged }) {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Listado unificado y gestión de pedidos multicanal creados */}
+          <div className="lg:col-span-2 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">
+                  Historial y Gestión de Pedidos Multicanal ({ordersData.total})
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  Consulta todos los pedidos, avanza su preparación, emite su factura o anúlalos devolviendo las unidades al stock.
+                </p>
+              </div>
+              {ordersData.totalPages > 1 && (
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    disabled={ordersData.page <= 1}
+                    onClick={() => loadAll(ordersData.page - 1)}
+                    className="rounded border border-neutral-300 px-2.5 py-1 disabled:opacity-40 hover:bg-neutral-100"
+                  >
+                    Anteriores
+                  </button>
+                  <span>
+                    Página {ordersData.page} de {ordersData.totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={ordersData.page >= ordersData.totalPages}
+                    onClick={() => loadAll(ordersData.page + 1)}
+                    className="rounded border border-neutral-300 px-2.5 py-1 disabled:opacity-40 hover:bg-neutral-100"
+                  >
+                    Siguientes
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Tarjetas resumen por estado del pedido */}
+            {ordersData.statusSummary && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-xs">
+                {[
+                  { key: 'Requested', label: 'Solicitados (Requested)' },
+                  { key: 'In Progress', label: 'En Preparación (In Progress)' },
+                  { key: 'Delivered', label: 'Entregados (Delivered)' },
+                  { key: 'Cancelled', label: 'Anulados (Cancelled)' },
+                ].map((st) => {
+                  const info = ordersData.statusSummary[st.key] || { count: 0, totalAmount: 0 };
+                  return (
+                    <div key={st.key} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                      <p className="text-neutral-500">{st.label}</p>
+                      <p className="text-lg font-bold text-neutral-900">{info.count}</p>
+                      <p className="font-mono text-[11px] text-neutral-600">
+                        ${Number(info.totalAmount).toLocaleString()}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-neutral-200 text-neutral-500">
+                  <tr>
+                    <th className="py-2 pr-3">ID</th>
+                    <th className="py-2 pr-3">Cliente</th>
+                    <th className="py-2 pr-3">Canal</th>
+                    <th className="py-2 pr-3">Ítems del Pedido</th>
+                    <th className="py-2 pr-3">Total</th>
+                    <th className="py-2 pr-3">Estado</th>
+                    <th className="py-2">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {[...(ordersData.orders || [])].reverse().map((ord) => {
+                    const alreadyInvoiced = invoices.some(
+                      (inv) => Number(inv.pedido_id) === Number(ord.id) && inv.estado !== 'Anulada'
+                    );
+                    return (
+                      <tr key={ord.id}>
+                        <td className="py-2.5 pr-3 font-mono font-semibold text-neutral-600">
+                          #{ord.id}
+                        </td>
+                        <td className="py-2.5 pr-3 font-medium text-neutral-900">
+                          {ord.customer}
+                        </td>
+                        <td className="py-2.5 pr-3">
+                          <span className="rounded bg-neutral-100 px-2 py-0.5 uppercase text-[10px] font-semibold text-neutral-700">
+                            {ord.canal || 'presencial'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-3 text-neutral-600">
+                          {(ord.products || [])
+                            .map((p) => `${p.quantity}× ${p.name}`)
+                            .join(', ')}
+                        </td>
+                        <td className="py-2.5 pr-3 font-semibold">
+                          ${Number(ord.total || 0).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 pr-3">
+                          {ord.status === 'Cancelled' ? (
+                            <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-[10px] font-semibold text-red-800">
+                              Cancelled
+                            </span>
+                          ) : (
+                            <select
+                              value={ord.status}
+                              onChange={(e) => handleOrderStatusChange(ord.id, e.target.value)}
+                              className="rounded border border-neutral-300 px-2 py-1 text-[11px]"
+                            >
+                              <option value="Requested">Requested</option>
+                              <option value="In Progress">In Progress</option>
+                              <option value="Delivered">Delivered</option>
+                            </select>
+                          )}
+                        </td>
+                        <td className="py-2.5 flex flex-wrap items-center gap-2">
+                          {!alreadyInvoiced && ord.status !== 'Cancelled' && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuickInvoiceFromOrder(ord)}
+                              className="text-[11px] font-medium text-neutral-900 underline"
+                            >
+                              Facturar
+                            </button>
+                          )}
+                          {ord.status !== 'Cancelled' && (
+                            <button
+                              type="button"
+                              onClick={() => handleCancelOperationalOrder(ord.id)}
+                              className="text-[11px] text-red-600 hover:underline"
+                            >
+                              Anular (+Stock)
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -888,9 +1193,10 @@ export default function OperationalERP({ onDataChanged }) {
         </div>
       )}
 
-      {/* PESTAÑA 3: CATEGORÍAS E ÍTEMS */}
+      {/* PESTAÑA 3: CATEGORÍAS E ÍTEMS (NORMALIZACIÓN CANÓNICA Y LIMPIEZA DE PRECIOS) */}
       {subTab === 'catalog' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Panel izquierdo: alta y borrado de categorías (`POST` y `DELETE /operational/categories`) */}
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm flex flex-col gap-4">
             <h3 className="text-base font-semibold text-neutral-900">
               Gestión de Categorías (con Unificación Automática)
@@ -1015,9 +1321,10 @@ export default function OperationalERP({ onDataChanged }) {
         </div>
       )}
 
-      {/* PESTAÑA 4: USUARIOS Y ROLES */}
+      {/* PESTAÑA 4: USUARIOS Y ROLES (`POST`, `GET` y `DELETE /operational/users`) */}
       {subTab === 'users' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
+          {/* Formulario de registro con normalización de correo y prevención de clientes duplicados */}
           <form
             onSubmit={handleCreateUser}
             className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm flex flex-col gap-3"
