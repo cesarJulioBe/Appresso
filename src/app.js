@@ -54,6 +54,16 @@ function createApp(container = buildContainer()) {
   app.use(httpLoggerMiddleware);
 
   // 5. Monta todos los módulos de rutas REST inyectándoles los controladores del contenedor
+  // Healthcheck para Docker/orquestadores: verifica que la API responde y que PostgreSQL está accesible
+  app.get('/health', async (_req, res) => {
+    try {
+      await container.db.query('SELECT 1');
+      res.json({ status: 'ok' });
+    } catch {
+      res.status(503).json({ status: 'db_unavailable' });
+    }
+  });
+
   app.use(createRoutes(container.controllers));
 
   // 6. Si la URL no coincidió con ninguna ruta anterior, dispara un error operacional 404
