@@ -55,7 +55,19 @@ const {
  * @returns {Promise<void>} Promesa que concluye cuando todo el esquema ha sido verificado/actualizado.
  */
 async function ensureSchema(db = defaultDb) {
-  // 1. Extiende la tabla preexistente 'usuarios' añadiendo atributos operativos si aún no existen en el esquema
+  // 0A. Crea la tabla base 'usuarios' si la base de datos es completamente nueva (en un computador recién clonado)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id SERIAL PRIMARY KEY,
+      nombre VARCHAR(150),
+      email VARCHAR(150) UNIQUE NOT NULL,
+      estado VARCHAR(30) NOT NULL DEFAULT 'Activo',
+      fecha_creacion TIMESTAMP DEFAULT NOW(),
+      fecha_actualizacion TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  // 1. Extiende la tabla 'usuarios' añadiendo atributos operativos si aún no existen en el esquema
   await db.query(`
     ALTER TABLE usuarios
       ADD COLUMN IF NOT EXISTS rol VARCHAR(30) DEFAULT 'cliente',
@@ -90,6 +102,17 @@ async function ensureSchema(db = defaultDb) {
       estado VARCHAR(30) DEFAULT 'Activo',
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  // 0B. Crea la tabla base 'orders' si la base de datos acaba de ser creada desde cero
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id SERIAL PRIMARY KEY,
+      customer VARCHAR(150) NOT NULL,
+      products JSONB NOT NULL DEFAULT '[]'::jsonb,
+      status VARCHAR(40) NOT NULL DEFAULT 'Requested',
+      created_at TIMESTAMP DEFAULT NOW()
     );
   `);
 
@@ -159,6 +182,60 @@ async function ensureSchema(db = defaultDb) {
       registros_corregidos INTEGER NOT NULL DEFAULT 0,
       detalle JSONB DEFAULT '{}'::jsonb,
       created_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  // 8. Crea la tabla 'routes' (grafo de rutas terrestres entre ciudades para el algoritmo de Dijkstra)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS routes (
+      id SERIAL PRIMARY KEY,
+      origin VARCHAR(120) NOT NULL,
+      destination VARCHAR(120) NOT NULL,
+      distance_km NUMERIC(10, 2) NOT NULL,
+      pair_route_id INTEGER,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  // 9. Crea la tabla 'umbrales_horarios' (configuración antifraude por franja horaria)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS umbrales_horarios (
+      id SERIAL PRIMARY KEY,
+      franja VARCHAR(40) UNIQUE NOT NULL,
+      hora_inicio TIME NOT NULL,
+      hora_fin TIME NOT NULL,
+      umbral_transacciones INTEGER NOT NULL,
+      ventana_segundos INTEGER NOT NULL DEFAULT 3
+    );
+  `);
+
+  // 10. Crea la tabla 'transacciones' (eventos firmados con HMAC-SHA256 e idempotencia por id_txn)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS transacciones (
+      id SERIAL PRIMARY KEY,
+      id_txn BIGINT UNIQUE,
+      usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      valor NUMERIC(14, 2) NOT NULL,
+      fecha_txn TIMESTAMP NOT NULL,
+      estado VARCHAR(40) NOT NULL DEFAULT 'Procesada',
+      hash VARCHAR(64) NOT NULL,
+      metodo_pago VARCHAR(50),
+      fecha_creacion TIMESTAMP DEFAULT NOW(),
+      fecha_actualizacion TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  // 11. Crea la tabla 'anomalias' (alertas de fraude por ráfaga en ventana deslizante o hash inválido)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS anomalias (
+      id SERIAL PRIMARY KEY,
+      transaccion_id INTEGER NOT NULL REFERENCES transacciones(id) ON DELETE CASCADE,
+      tipo VARCHAR(50) NOT NULL DEFAULT 'POSIBLE_FRAUDE',
+      nivel VARCHAR(30) NOT NULL DEFAULT 'Alto',
+      cantidad_transacciones INTEGER NOT NULL,
+      ventana_segundos INTEGER NOT NULL,
+      fecha_creacion TIMESTAMP DEFAULT NOW(),
+      fecha_actualizacion TIMESTAMP DEFAULT NOW()
     );
   `);
 }
@@ -646,6 +723,31 @@ async function seedInitialOperationalData(db = defaultDb, secret = config.hmacSe
       // Avanza el puntero de la cadena de pagos para la siguiente iteración del ciclo
       prevPaymentHash = hashActualPago;
     }
+  }
+
+  // 5. Sembrar umbrales horarios por defecto si la tabla 'umbrales_horarios' está vacía
+  const umbralesCountRes = await db.query('SELECT COUNT(*) FROM umbrales_horarios');
+  if (parseInt(umbralesCountRes.rows[0].count, 10) === 0) {
+    await db.query(`
+      INSERT INTO umbrales_horarios (franja, hora_inicio, hora_fin, umbral_transacciones, ventana_segundos)
+      VALUES
+        ('mañana', '05:00:01', '12:00:00', 10, 3),
+        ('tarde-noche', '12:00:01', '20:00:00', 6, 3),
+        ('noche-madrugada', '20:00:01', '05:00:00', 3, 3)
+    `);
+  }
+
+  // 6. Sembrar rutas iniciales entre ciudades si la tabla 'routes' está vacía
+  const routesCountRes = await db.query('SELECT COUNT(*) FROM routes');
+  if (parseInt(routesCountRes.rows[0].count, 10) === 0) {
+    await db.query(`
+      INSERT INTO routes (origin, destination, distance_km)
+      VALUES
+        ('Medellín', 'Pereira', 215),
+        ('Pereira', 'Medellín', 215),
+        ('Pereira', 'Cali', 210),
+        ('Cali', 'Pereira', 210)
+    `);
   }
 }
 
